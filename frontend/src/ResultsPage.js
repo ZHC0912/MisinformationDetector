@@ -24,13 +24,14 @@ function buildTokens(text, limeData) {
   return tokens;
 }
 
-function HighlightedText({ text, limeData }) {
+function HighlightedText({ text, limeData, limeRequested }) {
   if (!limeData?.length) {
+    const note = limeRequested
+      ? "(Highlighting unavailable — model not loaded)"
+      : "(Word analysis not requested — enable LIME on the input page and re-analyse)";
     return (
       <div className="hl-text-box">
-        <span style={{ color: "#888", fontSize: 12 }}>
-          (Highlighting unavailable — model not loaded)
-        </span>
+        <span style={{ color: "#888", fontSize: 12 }}>{note}</span>
         {" "}{text}
       </div>
     );
@@ -139,7 +140,7 @@ function VerdictBanner({ verdict }) {
 }
 
 // ── Main component ────────────────────────────────────────────
-export default function ResultsPage({ result, submittedText, onBack, onClear }) {
+export default function ResultsPage({ result, submittedText, limeRequested = true, onBack, onClear }) {
   const [displayFc,        setDisplayFc]        = useState(result.fact_check);
   const [finalVerdict,     setFinalVerdict]     = useState(result.final_verdict);
   const [finalExplanation, setFinalExplanation] = useState(result.final_explanation);
@@ -345,9 +346,11 @@ export default function ResultsPage({ result, submittedText, onBack, onClear }) 
                 <p className="lime-desc">
                   {result.lime_explanation?.length > 0
                     ? "Words are highlighted based on their influence on the verdict. Hover a word for its influence strength."
-                    : "Word highlighting is only available when the DistilBERT model is loaded."}
+                    : limeRequested
+                      ? "Word highlighting is only available when the DistilBERT model is loaded."
+                      : "Word analysis was not requested. Enable \"Include word influence analysis\" on the input page and re-analyse."}
                 </p>
-                <HighlightedText text={submittedText} limeData={result.lime_explanation} />
+                <HighlightedText text={submittedText} limeData={result.lime_explanation} limeRequested={limeRequested} />
                 {result.lime_explanation?.length > 0 && (
                   <>
                     <button className="btn-lime-toggle" onClick={() => setShowLimeChart(v => !v)}>

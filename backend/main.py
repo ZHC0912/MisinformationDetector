@@ -60,10 +60,12 @@ app.add_middleware(
 
 # ── Request / Response schemas ────────────────────────────────
 class AnalyseRequest(BaseModel):
-    text:        str = Field(..., min_length=20, max_length=20000,
-                             description="Article or post text to analyse")
-    source_name: str = Field(default="Unknown",
-                             description="Name of the source (optional)")
+    text:        str  = Field(..., min_length=20, max_length=20000,
+                              description="Article or post text to analyse")
+    source_name: str  = Field(default="Unknown",
+                              description="Name of the source (optional)")
+    run_lime:    bool = Field(default=False,
+                              description="Run LIME word-influence explainability (adds ~5-10s)")
 
 class FactCheckResult(BaseModel):
     verdict:          str
@@ -166,9 +168,13 @@ async def analyse(request: AnalyseRequest):
     print("Step 1: Running NLP analysis...")
     nlp_result = textanalysis.analyse(request.text)
 
-    # Step 2: LIME explainability
-    print("Step 2: Running LIME explainability...")
-    lime_result = textanalysis.explain_with_lime(request.text)
+    # Step 2: LIME explainability (opt-in — skipped by default, adds ~5-10s)
+    if request.run_lime:
+        print("Step 2: Running LIME explainability...")
+        lime_result = textanalysis.explain_with_lime(request.text)
+    else:
+        print("Step 2: LIME skipped (run_lime=False)")
+        lime_result = []
 
     # Step 3: Fact-check
     print("Step 3: Running fact-check...")
@@ -301,7 +307,7 @@ async def model_info():
         "nlp_model":        "DistilBERT (distilbert-base-uncased) fine-tuned on ISOT dataset",
         "nlp_model_loaded": textanalysis.is_model_loaded(),
         "fact_check_model": f"Gemini API — {factcheck.GEMINI_FC_MODEL}",
-        "ocr_model":        f"Gemini Vision — {ocr.GEMINI_OCR_MODEL}",
+        "ocr_model":        "EasyOCR (local, offline)",
         "task":             "Binary classification + factual verification + image OCR",
         "framework":        "Hugging Face Transformers + PyTorch + Google Gemini API",
         "api_version":      "3.0.0"

@@ -10,3 +10,4 @@ trafilatura==2.0.0
 lime==0.2.0.1
 easyocr==1.7.2
 Pillow>=10.0.0
+python-dotenv>=1.0.0

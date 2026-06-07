@@ -64,6 +64,10 @@ body {
 /* ── Label optional tag ──────────────────────────────────────── */
 .label-optional { font-weight: 400; color: #aaa; font-size: 12px; }
 
+/* ── LIME opt-in toggle ──────────────────────────────────────── */
+.lime-toggle-row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; font-size: 13px; color: #555; cursor: pointer; }
+.lime-toggle-row input[type="checkbox"] { width: 15px; height: 15px; accent-color: #3a5cd8; cursor: pointer; flex-shrink: 0; }
+
 /* ── Modal overlay ───────────────────────────────────────────── */
 .modal-overlay { position: fixed; inset: 0; background: rgba(10,15,30,0.45); backdrop-filter: blur(3px); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 20px; }
 .modal-card    { background: #fff; border-radius: 16px; box-shadow: 0 12px 48px rgba(0,0,0,0.18); padding: 32px 28px 24px; width: 100%; max-width: 460px; position: relative; animation: modal-in 0.18s ease; }

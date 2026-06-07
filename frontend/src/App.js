@@ -162,6 +162,7 @@ export default function App() {
   const [modal,       setModal]       = useState(null); // null | "url" | "ocr"
   const [showResults, setShowResults] = useState(false);
   const [showEval,    setShowEval]    = useState(false);
+  const [runLime,     setRunLime]     = useState(false);
 
   // Close modal on Escape key
   useEffect(() => {
@@ -190,7 +191,7 @@ export default function App() {
       const res = await fetch(`${API_URL}/analyse`, {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ text: text.trim(), source_name: sourceName.trim() || "Unknown Source" }),
+        body:    JSON.stringify({ text: text.trim(), source_name: sourceName.trim() || "Unknown Source", run_lime: runLime }),
       });
       if (!res.ok) throw new Error("Server error: " + res.status);
       setResult(await res.json());
@@ -214,7 +215,7 @@ export default function App() {
 
   // ── Results page ───────────────────────────────────────────
   if (showResults && result) {
-    return <ResultsPage result={result} submittedText={text}
+    return <ResultsPage result={result} submittedText={text} limeRequested={runLime}
       onBack={() => setShowResults(false)} onClear={handleClear} />;
   }
 
@@ -259,6 +260,15 @@ export default function App() {
             📷 Extract from Image
           </button>
         </div>
+
+        <label className="lime-toggle-row">
+          <input
+            type="checkbox"
+            checked={runLime}
+            onChange={e => setRunLime(e.target.checked)}
+          />
+          <span>Include word influence analysis (LIME) <span className="label-optional">— adds ~5–10s</span></span>
+        </label>
 
         <div className="btn-row">
           <button className="btn-primary" onClick={handleAnalyse} disabled={loading}>
