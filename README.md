@@ -24,7 +24,7 @@ MisinformationDetector/
 │   ├── factcheck.py  Fact-check orchestration
 │   ├── fc_google.py  Google Fact Check API
 │   ├── fc_gemini.py  Gemini AI fallback
-│   ├── ocr.py        Image OCR via Gemini Vision
+│   ├── ocr.py        Image OCR via EasyOCR (local, offline)
 │   ├── scraper.py    URL article scraper
 │   ├── evaluation.py LIAR benchmark evaluation
 │   ├── model/        DistilBERT checkpoint (weights not in repo)
@@ -50,13 +50,15 @@ MisinformationDetector/
 
 - Python 3.10+
 - Node.js 18+
-- A Gemini API key — [get one here](https://aistudio.google.com/app/apikey)
+- A Gemini API key — [get one here](https://aistudio.google.com/app/apikey) *(used for fact-checking only)*
 - A Google Fact Check Tools API key — [enable it here](https://console.cloud.google.com/apis/library/factchecktools.googleapis.com)
+
+> OCR is handled locally by EasyOCR — no API key required for image text extraction.
 
 ### 1. Clone the repo
 
 ```bash
-git clone https://github.com/ZhanHeng/MisinformationDetector.git
+git clone https://github.com/ZHC0912/MisinformationDetector.git
 cd MisinformationDetector
 ```
 
@@ -152,7 +154,7 @@ Set `run_lime: true` to include word-level LIME explainability (adds ~5–10s).
 User Input (text / URL / image)
     │
     ├─ /scrape-url   → trafilatura extracts article body
-    ├─ /extract-text → Gemini Vision extracts text from image
+    ├─ /extract-text → EasyOCR (local) extracts text from image
     │
     └─ /analyse
          ├─ DistilBERT NLP  → style verdict + credibility score
