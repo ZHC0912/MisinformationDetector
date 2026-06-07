@@ -11,19 +11,32 @@ Handles:
 =============================================================
 """
 
-import os
-import re
+import concurrent.futures
 import json
+import logging
+import os
 import random
+import re
+import threading
+
 import numpy as np
-import torch
-from transformers import DistilBertTokenizerFast, DistilBertForSequenceClassification
+
+# torch and transformers are heavy — imported lazily inside load_model()
+# so the module can be imported even when those packages are not installed.
+torch = None
+DistilBertTokenizerFast = None
+DistilBertForSequenceClassification = None
+
+log = logging.getLogger(__name__)
 
 # ── Model state (loaded once at startup) ─────────────────────
 _tokenizer = None
 _model     = None
 _label_map = {"0": "Reliable", "1": "Misleading"}
 MODEL_PATH = "./model"
+
+_model_lock = threading.Lock()   # guards _tokenizer / _model during lazy-init
+_lime_lock  = threading.Lock()   # guards _lime_explainer during lazy-init
 
 _CHUNK_WORD_LIMIT = 180  # safe margin below DistilBERT's 256-token max
 
@@ -49,23 +62,35 @@ CREDIBLE_WORDS = [
 
 def load_model() -> bool:
     """Load DistilBERT model from disk. Returns True if successful."""
-    global _tokenizer, _model, _label_map
+    global _tokenizer, _model, _label_map, torch, DistilBertTokenizerFast, DistilBertForSequenceClassification
 
     if not os.path.exists(MODEL_PATH):
-        print(f"WARNING: No model found at {MODEL_PATH}. Using heuristic mode.")
+        log.warning("No model found at %s. Using heuristic mode.", MODEL_PATH)
         return False
 
-    print(f"Loading DistilBERT model from {MODEL_PATH}...")
-    _tokenizer = DistilBertTokenizerFast.from_pretrained(MODEL_PATH)
-    _model     = DistilBertForSequenceClassification.from_pretrained(MODEL_PATH)
-    _model.eval()
+    with _model_lock:
+        if _model is not None:
+            return True
+        import torch as _torch
+        from transformers import (
+            DistilBertTokenizerFast as _Tokenizer,
+            DistilBertForSequenceClassification as _Model,
+        )
+        torch = _torch
+        DistilBertTokenizerFast = _Tokenizer
+        DistilBertForSequenceClassification = _Model
 
-    label_map_path = os.path.join(MODEL_PATH, "label_map.json")
-    if os.path.exists(label_map_path):
-        with open(label_map_path) as f:
-            _label_map = json.load(f)
+        log.info("Loading DistilBERT model from %s...", MODEL_PATH)
+        _tokenizer = DistilBertTokenizerFast.from_pretrained(MODEL_PATH)
+        _model     = DistilBertForSequenceClassification.from_pretrained(MODEL_PATH)
+        _model.eval()
 
-    print("DistilBERT model loaded successfully!")
+        label_map_path = os.path.join(MODEL_PATH, "label_map.json")
+        if os.path.exists(label_map_path):
+            with open(label_map_path) as f:
+                _label_map = json.load(f)
+
+    log.info("DistilBERT model loaded successfully.")
     return True
 
 
@@ -98,6 +123,7 @@ def _split_into_chunks(text: str) -> list:
 
 def _predict_single(text: str) -> dict:
     """Run one DistilBERT forward pass. Caller must ensure model is loaded."""
+    import torch as _torch
     inputs = _tokenizer(
         text,
         return_tensors="pt",
@@ -105,8 +131,8 @@ def _predict_single(text: str) -> dict:
         padding=True,
         max_length=256,
     )
-    with torch.no_grad():
-        probs = torch.softmax(_model(**inputs).logits, dim=1).squeeze()
+    with _torch.no_grad():
+        probs = _torch.softmax(_model(**inputs).logits, dim=1).squeeze()
     return {"reliable_prob": float(probs[0]), "misleading_prob": float(probs[1])}
 
 
@@ -130,7 +156,7 @@ def predict(text: str) -> dict:
         chunks  = _split_into_chunks(text)
         results = [_predict_single(chunk) for chunk in chunks]
         avg_misleading = sum(r["misleading_prob"] for r in results) / len(results)
-        print(f"  [NLP] Chunked inference: {len(chunks)} chunks, avg misleading={avg_misleading:.3f}")
+        log.info("[NLP] Chunked inference: %d chunks, avg misleading=%.3f", len(chunks), avg_misleading)
         chunks_out = [
             {
                 "text":            chunk,
@@ -147,7 +173,7 @@ def predict(text: str) -> dict:
             "chunks":          chunks_out,
         }
     except Exception as e:
-        print(f"  [NLP] Model prediction failed: {e}. Falling back to heuristic.")
+        log.error("[NLP] Model prediction failed: %s. Falling back to heuristic.", e)
         return _heuristic_predict(text)
 
 
@@ -223,6 +249,8 @@ def generate_explanation(verdict: str, confidence: float,
 
 _lime_explainer = None  # lazy-initialised on first explain_with_lime() call
 
+_LIME_TIMEOUT = 30  # seconds; LIME can stall on long or unusual texts
+
 _STOPWORDS = {
     "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for",
     "of", "with", "by", "from", "is", "was", "are", "were", "be", "been",
@@ -241,6 +269,7 @@ def _lime_batch_predict(texts: list) -> np.ndarray:
     """
     if _tokenizer is None or _model is None:
         return np.full((len(texts), 2), 0.5)
+    import torch as _torch
     results = []
     batch_size = 16
     for i in range(0, len(texts), batch_size):
@@ -252,8 +281,8 @@ def _lime_batch_predict(texts: list) -> np.ndarray:
             padding=True,
             max_length=128,   # shorter limit keeps LIME fast
         )
-        with torch.no_grad():
-            probs = torch.softmax(_model(**inputs).logits, dim=1).numpy()
+        with _torch.no_grad():
+            probs = _torch.softmax(_model(**inputs).logits, dim=1).numpy()
         results.extend(probs)
     return np.array(results)
 
@@ -268,28 +297,38 @@ def explain_with_lime(text: str, num_features: int = 10) -> list:
       direction — "misleading" or "reliable"
       strength  — normalised 0-1 (for rendering bar width)
 
-    Returns empty list if the model is not loaded (heuristic mode).
+    Returns empty list if the model is not loaded (heuristic mode) or if LIME
+    times out (> _LIME_TIMEOUT seconds).
     """
     global _lime_explainer
     if not is_model_loaded():
         return []
 
-    if _lime_explainer is None:
-        try:
-            from lime.lime_text import LimeTextExplainer
-            _lime_explainer = LimeTextExplainer(class_names=["Reliable", "Misleading"])
-        except ImportError:
-            print("  [LIME] lime package not installed — explainability unavailable")
-            return []
+    with _lime_lock:
+        if _lime_explainer is None:
+            try:
+                from lime.lime_text import LimeTextExplainer
+                _lime_explainer = LimeTextExplainer(class_names=["Reliable", "Misleading"])
+            except ImportError:
+                log.warning("[LIME] lime package not installed — explainability unavailable")
+                return []
+        local_explainer = _lime_explainer
 
     try:
-        exp = _lime_explainer.explain_instance(
-            text,
-            _lime_batch_predict,
-            num_features=num_features,
-            num_samples=100,
-            labels=[1],         # explain class 1 = Misleading
-        )
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(
+                local_explainer.explain_instance,
+                text,
+                _lime_batch_predict,
+                num_features=num_features,
+                num_samples=100,
+                labels=[1],
+            )
+            try:
+                exp = future.result(timeout=_LIME_TIMEOUT)
+            except concurrent.futures.TimeoutError:
+                log.warning("[LIME] Explanation timed out after %ds — skipping", _LIME_TIMEOUT)
+                return []
 
         word_scores = exp.as_list(label=1)
         if not word_scores:
@@ -318,7 +357,7 @@ def explain_with_lime(text: str, num_features: int = 10) -> list:
         return result
 
     except Exception as e:
-        print(f"  [LIME] Explanation failed: {e}")
+        log.error("[LIME] Explanation failed: %s", e)
         return []
 
 

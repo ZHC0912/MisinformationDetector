@@ -199,6 +199,11 @@ export default function ResultsPage({ result, submittedText, limeRequested = tru
 
         {/* Verdict */}
         <VerdictBanner verdict={finalVerdict} />
+        {result.heuristic_mode && (
+          <div className="heuristic-banner">
+            ⚠ Heuristic mode — DistilBERT model not loaded. NLP results are keyword-based estimates only, not AI predictions.
+          </div>
+        )}
         <div className="explanation-box">{finalExplanation}</div>
 
         {/* ── Two panels ── */}

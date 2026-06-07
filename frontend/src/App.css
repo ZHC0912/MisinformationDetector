@@ -281,3 +281,16 @@ kbd { display: inline-block; background: #f0f0f0; border: 1px solid #ccc; border
 .eval-roc-note  { font-size: 11px; color: #aaa; margin-top: 10px; line-height: 1.6; text-align: center; max-width: 480px; margin-left: auto; margin-right: auto; }
 
 .eval-methodology { font-size: 11px; color: #aaa; background: #f8f9fb; border-radius: 9px; padding: 12px 14px; margin-top: 18px; line-height: 1.75; border-left: 3px solid #ddd; }
+
+/* ── Heuristic mode warning banner ──────────────────────────── */
+.heuristic-banner {
+  background: #fff8e1;
+  border: 1px solid #ffe082;
+  border-left: 4px solid #f9a825;
+  border-radius: 8px;
+  color: #7a5800;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 10px 14px;
+  margin: 10px 0 14px;
+}

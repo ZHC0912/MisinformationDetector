@@ -12,8 +12,12 @@ result with the NLP style analysis from textanalysis.py.
 =============================================================
 """
 
+import logging
+
 from config    import GEMINI_FC_MODEL   # re-exported for main.py /model-info
 from fc_google import fact_check_google
+
+log = logging.getLogger(__name__)
 
 
 def fact_check(text: str) -> dict:
@@ -22,14 +26,14 @@ def fact_check(text: str) -> dict:
     Returns a 'not_found' sentinel if no indexed human-reviewed record exists
     so the caller can offer the user an optional AI check.
     """
-    print("  [Fact-Check] Querying Google Fact Check Tools API...")
+    log.info("[Fact-Check] Querying Google Fact Check Tools API...")
     result = fact_check_google(text)
 
     if result:
-        print(f"  [Fact-Check] Google match found: {result['verdict']}")
+        log.info("[Fact-Check] Google match found: %s", result["verdict"])
         return result
 
-    print("  [Fact-Check] No indexed record found.")
+    log.info("[Fact-Check] No indexed record found.")
     claim = text.replace("\n", " ").split(".")[0].strip()[:150]
     return {
         "verdict":           "UNVERIFIABLE",

@@ -20,12 +20,24 @@ Run with:
 =============================================================
 """
 
+import logging
 import re
 import time
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, UploadFile, File, HTTPException
+
+from fastapi import FastAPI, Request, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
+
+logging.basicConfig(
+    level   = logging.INFO,
+    format  = "%(asctime)s %(levelname)-8s %(name)s — %(message)s",
+    datefmt = "%Y-%m-%d %H:%M:%S",
+)
+log = logging.getLogger(__name__)
 
 _URL_RE = re.compile(r'^https?://.+\..+', re.IGNORECASE)
 
@@ -35,6 +47,9 @@ import ocr
 import scraper
 import evaluation
 from fc_gemini import fact_check_gemini
+
+# ── Rate limiter ───────────────────────────────────────────────
+limiter = Limiter(key_func=get_remote_address)
 
 # ── Lifespan ──────────────────────────────────────────────────
 @asynccontextmanager
@@ -49,6 +64,9 @@ app = FastAPI(
     version     = "3.0.0",
     lifespan    = lifespan,
 )
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.add_middleware(
     CORSMiddleware,
@@ -99,6 +117,7 @@ class AnalyseResponse(BaseModel):
     processing_time:   float
     source_name:       str
     mode:              str
+    heuristic_mode:    bool
 
 class OCRResponse(BaseModel):
     extracted_text: str
@@ -148,37 +167,37 @@ async def root():
 
 
 @app.post("/analyse", response_model=AnalyseResponse, tags=["Analysis"])
-async def analyse(request: AnalyseRequest):
+@limiter.limit("10/minute")
+async def analyse(request: Request, body: AnalyseRequest):
     """
     Analyse article text for credibility.
 
     Runs two analyses in sequence:
     1. DistilBERT NLP — checks writing style and linguistic patterns
-    2. Gemini — checks factual accuracy of the claims
+    2. Google GFCT — checks factual accuracy of the claims
 
     Returns combined verdict with full explanation.
+    Rate limited to 10 requests/minute per IP.
     """
     start_time = time.time()
 
-    print(f"\n--- New analysis request ---")
-    print(f"Source: {request.source_name}")
-    print(f"Text length: {len(request.text)} characters")
+    log.info("New analysis — source=%s len=%d", body.source_name, len(body.text))
 
     # Step 1: NLP analysis
-    print("Step 1: Running NLP analysis...")
-    nlp_result = textanalysis.analyse(request.text)
+    log.info("Step 1: Running NLP analysis...")
+    nlp_result = textanalysis.analyse(body.text)
 
     # Step 2: LIME explainability (opt-in — skipped by default, adds ~5-10s)
-    if request.run_lime:
-        print("Step 2: Running LIME explainability...")
-        lime_result = textanalysis.explain_with_lime(request.text)
+    if body.run_lime:
+        log.info("Step 2: Running LIME explainability...")
+        lime_result = textanalysis.explain_with_lime(body.text)
     else:
-        print("Step 2: LIME skipped (run_lime=False)")
+        log.info("Step 2: LIME skipped (run_lime=False)")
         lime_result = []
 
     # Step 3: Fact-check
-    print("Step 3: Running fact-check...")
-    fc_result = factcheck.fact_check(request.text)
+    log.info("Step 3: Running fact-check...")
+    fc_result = factcheck.fact_check(body.text)
 
     # Step 4: Combine
     final_verdict, final_explanation = factcheck.combine_verdicts(
@@ -188,7 +207,8 @@ async def analyse(request: AnalyseRequest):
     )
 
     processing_time = round(time.time() - start_time, 3)
-    print(f"Done in {processing_time}s — Final verdict: {final_verdict}")
+    heuristic_mode  = nlp_result["mode"] == "heuristic"
+    log.info("Done in %.3fs — final=%s heuristic=%s", processing_time, final_verdict, heuristic_mode)
 
     return AnalyseResponse(
         style_verdict     = nlp_result["style_verdict"],
@@ -204,20 +224,22 @@ async def analyse(request: AnalyseRequest):
         final_explanation = final_explanation,
         chunks            = nlp_result["chunks"],
         processing_time   = processing_time,
-        source_name       = request.source_name,
+        source_name       = body.source_name,
         mode              = nlp_result["mode"],
+        heuristic_mode    = heuristic_mode,
     )
 
 
 @app.post("/extract-text", response_model=OCRResponse, tags=["OCR"])
-async def extract_text(file: UploadFile = File(...)):
+@limiter.limit("20/minute")
+async def extract_text(request: Request, file: UploadFile = File(...)):
     """
-    Extract text from an uploaded image using Gemini Vision OCR.
+    Extract text from an uploaded image using EasyOCR.
 
     Supported formats: JPG, PNG, WEBP, GIF
     Maximum file size: 10MB
+    Rate limited to 20 requests/minute per IP.
     """
-    # Validate file type
     content_type = file.content_type or "image/jpeg"
     if content_type not in ocr.ALLOWED_TYPES:
         raise HTTPException(
@@ -225,7 +247,6 @@ async def extract_text(file: UploadFile = File(...)):
             detail      = f"Unsupported file type: {content_type}. Please upload JPG, PNG, WEBP, or GIF."
         )
 
-    # Read and validate size
     image_bytes = await file.read()
     if len(image_bytes) > ocr.MAX_IMAGE_SIZE:
         raise HTTPException(
@@ -233,7 +254,7 @@ async def extract_text(file: UploadFile = File(...)):
             detail      = "Image too large. Maximum size is 10MB."
         )
 
-    print(f"\n--- OCR request: {file.filename} ({len(image_bytes)} bytes) ---")
+    log.info("OCR request: %s (%d bytes)", file.filename, len(image_bytes))
 
     result = ocr.extract_text(image_bytes, content_type)
 
@@ -246,36 +267,38 @@ async def extract_text(file: UploadFile = File(...)):
 
 
 @app.post("/scrape-url", response_model=ScrapeResponse, tags=["Scraper"])
-async def scrape_url(request: ScrapeRequest):
+@limiter.limit("20/minute")
+async def scrape_url(request: Request, body: ScrapeRequest):
     """
     Fetch and extract the main article text from a URL.
 
     Uses trafilatura to extract the article body, title, and site name.
-    The extracted text can then be passed to /analyse for credibility assessment.
+    Rate limited to 20 requests/minute per IP.
     """
-    url = request.url.strip()
+    url = body.url.strip()
     if not _URL_RE.match(url):
         raise HTTPException(status_code=400, detail="Invalid URL. Must start with http:// or https://")
 
-    print(f"\n--- Scrape request: {url} ---")
+    log.info("Scrape request: %s", url)
     result = scraper.scrape_url(url)
-    print(f"Scraped {result['word_count']} words — error: {result['error']}")
+    log.info("Scraped %d words — error: %s", result["word_count"], result["error"])
     return ScrapeResponse(**result)
 
 
 @app.post("/fact-check-ai", response_model=AiFactCheckResponse, tags=["Analysis"])
-async def fact_check_ai(request: AiFactCheckRequest):
+@limiter.limit("5/minute")
+async def fact_check_ai(request: Request, body: AiFactCheckRequest):
     """
     Run an AI (Gemini) fact-check on demand.
 
     Called when the Google Fact Check API found no indexed records and
     the user explicitly opts in to an AI-assisted check.
-    Returns the Gemini result plus an updated combined verdict.
+    Rate limited to 5 requests/minute per IP to protect Gemini quota.
     """
-    print(f"\n--- AI fact-check request (user opt-in) ---")
-    fc_result = fact_check_gemini(request.text)
+    log.info("AI fact-check request (user opt-in)")
+    fc_result = fact_check_gemini(body.text)
     final_verdict, final_explanation = factcheck.combine_verdicts(
-        request.style_verdict,    request.style_confidence,
+        body.style_verdict,    body.style_confidence,
         fc_result["verdict"],     fc_result["confidence"],
         fc_result["fact_check_source"],
     )

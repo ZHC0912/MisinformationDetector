@@ -12,8 +12,12 @@ so the caller can decide whether to fall back to another source.
 =============================================================
 """
 
+import logging
+
 import requests
 from config import GFCT_API_KEY, GFCT_URL
+
+log = logging.getLogger(__name__)
 
 
 # ── Rating normalisation ────────────────────────────────────────
@@ -77,7 +81,7 @@ def fact_check_google(text: str) -> dict | None:
         )
 
         if response.status_code != 200:
-            print(f"  [Google FC] API error {response.status_code}")
+            log.warning("[Google FC] API error %s", response.status_code)
             return None
 
         claims = response.json().get("claims", [])
@@ -136,5 +140,5 @@ def fact_check_google(text: str) -> dict | None:
         }
 
     except Exception as e:
-        print(f"  [Google FC] Exception: {e}")
+        log.error("[Google FC] Exception: %s", e)
         return None
