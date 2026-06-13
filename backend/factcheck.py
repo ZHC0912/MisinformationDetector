@@ -15,7 +15,7 @@ result with the NLP style analysis from textanalysis.py.
 import logging
 
 from config    import GEMINI_FC_MODEL   # re-exported for main.py /model-info
-from fc_google import fact_check_google
+from fc_google import fact_check_google, extract_claim
 
 log = logging.getLogger(__name__)
 
@@ -34,7 +34,7 @@ def fact_check(text: str) -> dict:
         return result
 
     log.info("[Fact-Check] No indexed record found.")
-    claim = text.replace("\n", " ").split(".")[0].strip()[:150]
+    claim = extract_claim(text)
     return {
         "verdict":           "UNVERIFIABLE",
         "confidence":        0.5,

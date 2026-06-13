@@ -1,0 +1,16 @@
+# Secrets — never bake into the image (provided via compose env instead)
+.env
+
+# Python caches / artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.log
+
+# Tests not needed at runtime
+tests/
+
+# Large training artifacts — the deployed model in model/ IS kept
+model_v2/
+model_versions/
+model_liar/

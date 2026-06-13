@@ -1,0 +1,50 @@
+{
+  "baseline_liar_valid": {
+    "baseline_liar_loss": 3.3872,
+    "baseline_liar_model_preparation_time": 0.001,
+    "baseline_liar_accuracy": 0.5531,
+    "baseline_liar_f1": 0.4856,
+    "baseline_liar_precision": 0.5042,
+    "baseline_liar_recall": 0.5031,
+    "baseline_liar_runtime": 20.206,
+    "baseline_liar_samples_per_second": 50.826,
+    "baseline_liar_steps_per_second": 3.217,
+    "epoch": 0
+  },
+  "baseline_isot_test": {
+    "baseline_isot_loss": 0.0141,
+    "baseline_isot_model_preparation_time": 0.001,
+    "baseline_isot_accuracy": 0.9978,
+    "baseline_isot_f1": 0.9977,
+    "baseline_isot_precision": 0.9978,
+    "baseline_isot_recall": 0.9977,
+    "baseline_isot_runtime": 388.5436,
+    "baseline_isot_samples_per_second": 14.884,
+    "baseline_isot_steps_per_second": 0.932,
+    "epoch": 0
+  },
+  "stage2_liar_valid": {
+    "stage2_liar_loss": 0.6145,
+    "stage2_liar_model_preparation_time": 0.001,
+    "stage2_liar_accuracy": 0.6524,
+    "stage2_liar_f1": 0.6347,
+    "stage2_liar_precision": 0.6376,
+    "stage2_liar_recall": 0.6334,
+    "stage2_liar_runtime": 19.9922,
+    "stage2_liar_samples_per_second": 51.37,
+    "stage2_liar_steps_per_second": 3.251,
+    "epoch": 3.0
+  },
+  "stage2_isot_test": {
+    "stage2_isot_loss": 0.0497,
+    "stage2_isot_model_preparation_time": 0.001,
+    "stage2_isot_accuracy": 0.9972,
+    "stage2_isot_f1": 0.9972,
+    "stage2_isot_precision": 0.9973,
+    "stage2_isot_recall": 0.9971,
+    "stage2_isot_runtime": 388.5465,
+    "stage2_isot_samples_per_second": 14.884,
+    "stage2_isot_steps_per_second": 0.932,
+    "epoch": 3.0
+  }
+}

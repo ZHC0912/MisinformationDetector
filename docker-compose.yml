@@ -1,0 +1,46 @@
+# ── Full stack: MongoDB + FastAPI backend + React frontend ─────
+# Usage:
+#   docker compose up --build           # build + start everything
+#   docker compose exec backend python seed_sources.py   # seed ratings (first run)
+#   docker compose down                 # stop
+#
+# API keys are read from a .env file next to this compose file (optional):
+#   GEMINI_API_KEY=...
+#   GFCT_API_KEY=...
+# Without them the app still runs; only the fact-check tiers are disabled.
+
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    volumes:
+      - mongo_data:/data/db
+    ports:
+      - "27017:27017"
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      MONGODB_URI:    mongodb://mongo:27017
+      MONGODB_DB:     misinfo_detector
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GFCT_API_KEY:   ${GFCT_API_KEY:-}
+    depends_on:
+      - mongo
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        REACT_APP_API_URL: http://localhost:8000
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+volumes:
+  mongo_data:

@@ -35,10 +35,11 @@ MisinformationDetector/
 │       ├── App.js         Input page
 │       ├── ResultsPage.js Results display
 │       └── EvaluationPage.js Model evaluation dashboard
-├── notebooks/        Training scripts
-│   ├── clean_data.py     Preprocess ISOT dataset
-│   ├── train_model.py    Fine-tune DistilBERT
-│   └── build_eval_data.py Build LIAR evaluation set
+├── notebooks/        Training pipeline (run in numbered order)
+│   ├── 01_clean_isot.py        Clean + deduplicate ISOT dataset
+│   ├── 02_train_isot.py        Stage 1: fine-tune DistilBERT on ISOT
+│   ├── 03_train_liar_stage2.py Stage 2: adapt to LIAR (influential sources)
+│   └── 04_build_eval_data.py   Build LIAR test benchmark set
 └── README.md
 ```
 
@@ -82,24 +83,32 @@ pip install -r requirements.txt
 | Dataset | Link | Place at |
 |---------|------|----------|
 | ISOT Fake News | [Kaggle](https://www.kaggle.com/datasets/clmentbisaillon/fake-and-real-news-dataset) | `ISOT_Dataset/True.csv` and `ISOT_Dataset/Fake.csv` |
-| LIAR | [HuggingFace](https://huggingface.co/datasets/liar) | `LIAR_Dataset/test.tsv` |
+| LIAR | [HuggingFace](https://huggingface.co/datasets/liar) | `LIAR_Dataset/train.tsv`, `valid.tsv`, `test.tsv` |
 
 ### 5. Train the model
 
 Skip this if you already have `backend/model/model.safetensors`.
 
+Run from inside `notebooks/` (scripts use relative paths):
+
 ```bash
-# Step 1 — clean ISOT data
-python notebooks/clean_data.py
+cd notebooks
 
-# Step 2 — fine-tune DistilBERT (~20 min on GPU)
-python notebooks/train_model.py
+# Step 1 — clean + deduplicate ISOT data
+python 01_clean_isot.py
 
-# Step 3 — build LIAR evaluation set (optional)
-python notebooks/build_eval_data.py
+# Step 2 — stage-1 fine-tune on ISOT (~20-30 min on GPU)
+python 02_train_isot.py
+
+# Step 3 — stage-2 fine-tune on LIAR influential-source statements (~10 min)
+python 03_train_liar_stage2.py
+
+# Step 4 — build LIAR test benchmark set
+python 04_build_eval_data.py
 ```
 
-The trained model is saved to `backend/model/`.
+Stage 1 saves to `backend/model/`; stage 2 saves to `backend/model_v2/`
+(copy its contents over `backend/model/` to deploy the adapted model).
 
 ### 6. Start the backend
 
@@ -184,6 +193,6 @@ Run `GET /evaluate` or visit the **Model Evaluation** page in the app for live r
 
 ## Notes
 
-- The model weights (`model.safetensors`) are not included in the repo due to file size. Run `train_model.py` to generate them, or contact the author for a pre-trained checkpoint.
+- The model weights (`model.safetensors`) are not included in the repo due to file size. Run the numbered scripts in `notebooks/` to generate them, or contact the author for a pre-trained checkpoint.
 - Without model weights the app falls back to a keyword-based heuristic and displays a warning.
 - API keys are loaded from `backend/.env` and are never committed to the repository.

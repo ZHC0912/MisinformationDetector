@@ -4,9 +4,12 @@
 // ============================================================
 
 import React, { useState, useRef, useEffect, useCallback } from "react";
+import axios from "axios";
 import "./App.css";
 import ResultsPage from "./ResultsPage";
 import EvaluationPage from "./EvaluationPage";
+import ErrorBoundary from "./ErrorBoundary";
+import SkeletonResults from "./SkeletonResults";
 import { API_URL } from "./config";
 
 function Hourglass() {
@@ -27,13 +30,11 @@ function UrlModal({ onClose, onSuccess }) {
     }
     setError(""); setLoading(true);
     try {
-      const res  = await fetch(`${API_URL}/scrape-url`, {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ url: urlInput.trim() }),
-      });
-      const data = await res.json();
-      if (!res.ok)    { setError(data.detail || "Scraping failed."); return; }
+      const res  = await axios.post(`${API_URL}/scrape-url`,
+        { url: urlInput.trim() },
+        { validateStatus: () => true });
+      const data = res.data;
+      if (res.status >= 400) { setError(data.detail || "Scraping failed."); return; }
       if (data.error) { setError(data.error); return; }
       if (data.text)  {
         onSuccess({
@@ -90,9 +91,9 @@ function OcrModal({ onClose, onSuccess }) {
     try {
       const form = new FormData();
       form.append("file", file);
-      const res  = await fetch(`${API_URL}/extract-text`, { method: "POST", body: form });
-      const data = await res.json();
-      if (!res.ok)    { setError(data.detail || "OCR failed."); return; }
+      const res  = await axios.post(`${API_URL}/extract-text`, form, { validateStatus: () => true });
+      const data = res.data;
+      if (res.status >= 400) { setError(data.detail || "OCR failed."); return; }
       if (data.error) { setError(data.error); return; }
       if (data.extracted_text) {
         onSuccess({ text: data.extracted_text, wordCount: data.word_count });
@@ -163,6 +164,7 @@ export default function App() {
   const [showResults, setShowResults] = useState(false);
   const [showEval,    setShowEval]    = useState(false);
   const [runLime,     setRunLime]     = useState(false);
+  const [runShap,     setRunShap]     = useState(true);   // SHAP on by default
 
   // Close modal on Escape key
   useEffect(() => {
@@ -188,13 +190,11 @@ export default function App() {
     if (text.trim().length < 20) { setError("Please enter at least 20 characters."); return; }
     setError(""); setSuccessMsg(""); setLoading(true); setResult(null);
     try {
-      const res = await fetch(`${API_URL}/analyse`, {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ text: text.trim(), source_name: sourceName.trim() || "Unknown Source", run_lime: runLime }),
-      });
-      if (!res.ok) throw new Error("Server error: " + res.status);
-      setResult(await res.json());
+      const res = await axios.post(`${API_URL}/analyse`,
+        { text: text.trim(), source_name: sourceName.trim() || "Unknown Source", run_lime: runLime, run_shap: runShap },
+        { validateStatus: () => true });
+      if (res.status >= 400) throw new Error("Server error: " + res.status);
+      setResult(res.data);
       setShowResults(true);
     } catch (err) {
       setError("Cannot connect to backend on port 8000. Error: " + err.message);
@@ -213,10 +213,19 @@ export default function App() {
     return <EvaluationPage onBack={() => setShowEval(false)} />;
   }
 
+  // ── Loading skeleton (during analysis) ─────────────────────
+  if (loading && !showResults) {
+    return <SkeletonResults />;
+  }
+
   // ── Results page ───────────────────────────────────────────
   if (showResults && result) {
-    return <ResultsPage result={result} submittedText={text} limeRequested={runLime}
-      onBack={() => setShowResults(false)} onClear={handleClear} />;
+    return (
+      <ErrorBoundary onReset={() => setShowResults(false)}>
+        <ResultsPage result={result} submittedText={text} limeRequested={runLime} shapRequested={runShap}
+          onBack={() => setShowResults(false)} onClear={handleClear} />
+      </ErrorBoundary>
+    );
   }
 
   // ── Input page ─────────────────────────────────────────────
@@ -268,6 +277,15 @@ export default function App() {
             onChange={e => setRunLime(e.target.checked)}
           />
           <span>Include word influence analysis (LIME) <span className="label-optional">— adds ~5–10s</span></span>
+        </label>
+
+        <label className="lime-toggle-row">
+          <input
+            type="checkbox"
+            checked={runShap}
+            onChange={e => setRunShap(e.target.checked)}
+          />
+          <span>Include word influence analysis (SHAP) <span className="label-optional">— adds ~10–45s</span></span>
         </label>
 
         <div className="btn-row">

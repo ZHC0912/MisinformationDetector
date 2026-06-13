@@ -15,7 +15,10 @@ Results should be treated as indicative, not authoritative.
 import json
 import time
 import requests
-from config import GEMINI_API_KEY, GEMINI_FC_MODEL, GEMINI_BASE_URL, MAX_RETRIES, RETRY_DELAY
+from config import (
+    GEMINI_API_KEY, GEMINI_FC_MODEL, GEMINI_BASE_URL, MAX_RETRIES, RETRY_DELAY,
+    GEMINI_TEMPERATURE, GEMINI_MAX_TOKENS,
+)
 
 GEMINI_URL = f"{GEMINI_BASE_URL}/{GEMINI_FC_MODEL}:generateContent?key={GEMINI_API_KEY}"
 
@@ -62,8 +65,8 @@ def fact_check_gemini(text: str) -> dict:
     payload = {
         "contents": [{"parts": [{"text": _PROMPT_TEMPLATE.format(text=text)}]}],
         "generationConfig": {
-            "temperature":     0.1,
-            "maxOutputTokens": 1024,
+            "temperature":     GEMINI_TEMPERATURE,
+            "maxOutputTokens": GEMINI_MAX_TOKENS,
         },
     }
 

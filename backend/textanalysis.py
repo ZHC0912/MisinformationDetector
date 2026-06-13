@@ -21,6 +21,8 @@ import threading
 
 import numpy as np
 
+import config
+
 # torch and transformers are heavy — imported lazily inside load_model()
 # so the module can be imported even when those packages are not installed.
 torch = None
@@ -37,8 +39,9 @@ MODEL_PATH = "./model"
 
 _model_lock = threading.Lock()   # guards _tokenizer / _model during lazy-init
 _lime_lock  = threading.Lock()   # guards _lime_explainer during lazy-init
+_shap_lock  = threading.Lock()   # guards _shap_explainer during lazy-init
 
-_CHUNK_WORD_LIMIT = 180  # safe margin below DistilBERT's 256-token max
+_CHUNK_WORD_LIMIT = config.CHUNK_WORD_LIMIT  # safe margin below DistilBERT's 256-token max
 
 WARNING_WORDS = [
     "shocking", "exposed", "breaking", "leaked", "bombshell",
@@ -162,7 +165,7 @@ def predict(text: str) -> dict:
                 "text":            chunk,
                 "misleading_prob": round(r["misleading_prob"], 4),
                 "reliable_prob":   round(r["reliable_prob"],   4),
-                "verdict":         "Misleading" if r["misleading_prob"] >= 0.5 else "Reliable",
+                "verdict":         "Misleading" if r["misleading_prob"] >= config.MISLEADING_THRESHOLD else "Reliable",
             }
             for chunk, r in zip(chunks, results)
         ]
@@ -321,7 +324,7 @@ def explain_with_lime(text: str, num_features: int = 10) -> list:
                 text,
                 _lime_batch_predict,
                 num_features=num_features,
-                num_samples=100,
+                num_samples=config.LIME_NUM_SAMPLES,
                 labels=[1],
             )
             try:
@@ -361,6 +364,100 @@ def explain_with_lime(text: str, num_features: int = 10) -> list:
         return []
 
 
+_shap_explainer = None  # lazy-initialised on first explain_with_shap() call
+
+_SHAP_TIMEOUT   = 45   # seconds; SHAP is slower than LIME on a GTX 1650
+_SHAP_MAX_EVALS = 100  # masking evaluations — higher = finer attributions, slower
+_SHAP_WORD_CAP  = 120  # cap input words; token-masking cost grows with length
+
+
+def _shap_predict(texts) -> np.ndarray:
+    """SHAP prediction wrapper — returns P(misleading) for a list of strings."""
+    probs = _lime_batch_predict([str(t) for t in texts])   # reuse batched forward pass
+    return probs[:, 1]
+
+
+def explain_with_shap(text: str, num_features: int = 10) -> list:
+    """
+    Use SHAP to identify which words most influenced the DistilBERT verdict.
+
+    Returns the SAME shape as explain_with_lime() so the frontend can render
+    both with one component:
+      word, score (positive = toward Misleading), direction, strength (0-1).
+
+    Returns empty list if the model is not loaded (heuristic mode) or if SHAP
+    times out (> _SHAP_TIMEOUT seconds).
+    """
+    global _shap_explainer
+    if not is_model_loaded():
+        return []
+
+    # Cap length — SHAP's token masking cost grows with sequence length.
+    words = text.split()
+    if len(words) > _SHAP_WORD_CAP:
+        text = " ".join(words[:_SHAP_WORD_CAP])
+
+    with _shap_lock:
+        if _shap_explainer is None:
+            try:
+                import shap
+                masker = shap.maskers.Text(_tokenizer)
+                _shap_explainer = shap.Explainer(_shap_predict, masker)
+            except ImportError:
+                log.warning("[SHAP] shap package not installed — explainability unavailable")
+                return []
+        local_explainer = _shap_explainer
+
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(local_explainer, [text],
+                                     max_evals=_SHAP_MAX_EVALS, silent=True)
+            try:
+                sv = future.result(timeout=_SHAP_TIMEOUT)
+            except concurrent.futures.TimeoutError:
+                log.warning("[SHAP] Explanation timed out after %ds — skipping", _SHAP_TIMEOUT)
+                return []
+
+        tokens = sv.data[0]
+        values = sv.values[0]
+
+        # whole words present in the (capped) text — used to drop WordPiece
+        # sub-word fragments like "del"/"ete" that SHAP emits for "delete"
+        text_words = set(re.findall(r"[a-z0-9']+", text.lower()))
+
+        pairs = []
+        for tok, score in zip(tokens, values):
+            word = str(tok).strip()
+            # drop stopwords, punctuation-only, very short tokens, and sub-word fragments
+            if not word or word.lower() in _STOPWORDS or len(word) <= 2:
+                continue
+            if not re.search(r"[A-Za-z0-9]", word):
+                continue
+            if word.lower() not in text_words:
+                continue
+            pairs.append((word, float(score)))
+
+        if not pairs:
+            return []
+
+        max_abs = max(abs(s) for _, s in pairs) or 1.0
+        result = [
+            {
+                "word":      word,
+                "score":     round(score, 4),
+                "direction": "misleading" if score > 0 else "reliable",
+                "strength":  round(abs(score) / max_abs, 4),
+            }
+            for word, score in pairs
+        ]
+        result.sort(key=lambda x: abs(x["score"]), reverse=True)
+        return result[:num_features]
+
+    except Exception as e:
+        log.error("[SHAP] Explanation failed: %s", e)
+        return []
+
+
 def analyse(text: str) -> dict:
     """
     Full text analysis pipeline.
@@ -369,7 +466,7 @@ def analyse(text: str) -> dict:
     prediction        = predict(text)
     misleading_prob   = prediction["misleading_prob"]
     reliable_prob     = prediction["reliable_prob"]
-    verdict           = "Misleading" if misleading_prob >= 0.5 else "Reliable"
+    verdict           = "Misleading" if misleading_prob >= config.MISLEADING_THRESHOLD else "Reliable"
     confidence        = round(max(misleading_prob, reliable_prob), 4)
     credibility_score = int(reliable_prob * 100)
     features          = extract_features(text, misleading_prob)

@@ -1,7 +1,12 @@
 # ── Model weights (too large for GitHub) ──────────────────────
 backend/model/model.safetensors
 backend/model_liar/model.safetensors
+backend/model_v2/model.safetensors
+backend/model_versions/
 notebooks/training_output/
+notebooks/training_output_stage2/
+notebooks/logs/
+notebooks/logs_stage2/
 
 # ── Python ────────────────────────────────────────────────────
 __pycache__/
@@ -30,3 +35,8 @@ LIAR_Dataset/
 .DS_Store
 Thumbs.db
 *.log
+
+# ── Working scratch / junk ────────────────────────────────────
+.claude/
+/restriction.png
+CLAUDE.md

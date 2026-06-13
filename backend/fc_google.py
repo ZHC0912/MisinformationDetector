@@ -13,11 +13,49 @@ so the caller can decide whether to fall back to another source.
 """
 
 import logging
+import re
 
 import requests
 from config import GFCT_API_KEY, GFCT_URL
 
 log = logging.getLogger(__name__)
+
+
+# ── Claim extraction ────────────────────────────────────────────
+def extract_claim(text: str, max_chars: int = 150) -> str:
+    """
+    Pick the most "claim-like" sentence from the text instead of blindly taking
+    the first one. Scores each sentence by named-entity / statistic density using
+    a lightweight, dependency-free heuristic:
+      - capitalised words mid-sentence  → proper-noun (entity) proxy
+      - tokens containing digits        → statistics/dates (strong claim signal)
+    Earliest sentence wins on a tie. Falls back to the first sentence.
+
+    (A spaCy NER model would be more accurate but adds a heavy dependency + model
+    download; this heuristic captures most of the benefit for free.)
+    """
+    text = re.sub(r"\s+", " ", text.replace("\n", " ")).strip()
+    if not text:
+        return ""
+
+    sentences = re.split(r"(?<=[.!?])\s+", text)
+    best, best_score = None, -1
+    for s in sentences:
+        s = s.strip()
+        if len(s) < 20:                      # too short to be a meaningful claim
+            continue
+        words = s.split()
+        entity_hits = sum(1 for w in words[1:] if w[:1].isupper())      # skip first word
+        digit_hits  = sum(1 for w in words if any(c.isdigit() for c in w))
+        score = entity_hits + 2 * digit_hits
+        if len(s) > max_chars:               # mild penalty for overly long sentences
+            score -= 1
+        if score > best_score:
+            best, best_score = s, score
+
+    if best is None:
+        best = sentences[0].strip() if sentences else text
+    return best[:max_chars]
 
 
 # ── Rating normalisation ────────────────────────────────────────
@@ -54,12 +92,11 @@ def _normalise_rating(rating: str) -> str:
 
 def _extract_query(text: str, max_chars: int = 150) -> str:
     """
-    Return the first sentence of the text as the API search query.
+    Build the API search query from the most claim-like sentence.
     The Google Fact Check API matches best against short, focused phrases
     (under 150 chars) rather than full article paragraphs.
     """
-    first = text.replace("\n", " ").split(".")[0].strip()
-    return first[:max_chars] if first else text[:max_chars]
+    return extract_claim(text, max_chars)
 
 
 # ── Main function ───────────────────────────────────────────────
@@ -123,12 +160,23 @@ def fact_check_google(text: str) -> dict | None:
             f"{r['publisher']} — {r['url']}" for r in reviews if r["url"]
         ))[:5]
 
+        # ── Dynamic confidence ──────────────────────────────────
+        # Derived from (a) how many reviewers agree with the overall verdict
+        # (consensus) and (b) how many reviews exist (corroboration), rather
+        # than a flat 0.92 for every match. Bounded to [0.55, 0.95].
+        agree         = sum(1 for v in verdicts if v == overall)
+        consensus     = agree / len(verdicts)
+        review_factor = min(len(reviews), 5) / 5
+        confidence    = round(min(0.95, max(0.55, 0.50 + 0.35 * consensus + 0.10 * review_factor)), 2)
+
         return {
             "verdict":           overall,
-            "confidence":        0.92,
+            "confidence":        confidence,
             "summary":           f"Fact-checked by {publishers}. Rated: \"{top['rating']}\".",
             "explanation":       (
-                f"{len(reviews)} human fact-checker review(s) found for this claim. "
+                f"{len(reviews)} human fact-checker review(s) found for this claim, "
+                f"{agree} of which agree on a \"{overall}\" verdict "
+                f"({consensus*100:.0f}% consensus). "
                 f"{top['publisher']} rated it as \"{top['rating']}\". "
                 f"These verdicts are from independent, professional fact-checking "
                 f"organisations and reflect actual investigation of the claim."

@@ -1,10 +1,12 @@
 """
 =============================================================
-BUILD EVALUATION DATA FROM LIAR DATASET
-File: notebooks/build_eval_data.py
+STEP 4 — BUILD EVALUATION DATA FROM LIAR TEST SET
+File: notebooks/04_build_eval_data.py
 
+Pipeline: 01_clean_isot → 02_train_isot → 03_train_liar_stage2 → 04_build_eval_data
 Reads LIAR_Dataset/test.tsv and produces backend/eval_data.json
 for use by backend/evaluation.py.
+(test.tsv is never used in training — 03 trains on train.tsv/valid.tsv only.)
 
 LIAR label mapping (6-class → binary):
   misleading (1): pants-fire, false, barely-true
@@ -13,7 +15,7 @@ LIAR label mapping (6-class → binary):
 
 Run:
   cd notebooks
-  python build_eval_data.py
+  python 04_build_eval_data.py
 
 Output: ../backend/eval_data.json
 =============================================================

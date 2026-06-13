@@ -4,6 +4,7 @@
 // ============================================================
 
 import React, { useState } from "react";
+import axios from "axios";
 import "./App.css";
 import { API_URL } from "./config";
 
@@ -140,35 +141,63 @@ function VerdictBanner({ verdict }) {
 }
 
 // ── Main component ────────────────────────────────────────────
-export default function ResultsPage({ result, submittedText, limeRequested = true, onBack, onClear }) {
+// ── Source reliability rating badge (FR5) ─────────────────────
+function SourceRatingBadge({ rating }) {
+  if (!rating) return null;
+  // tier_index: 0 Very Low … 5 Very High
+  const color = rating.tier_index == null ? "#888"
+    : rating.tier_index >= 4 ? "#27ae60"
+    : rating.tier_index >= 2 ? "#f39c12"
+    : "#e74c3c";
+  const hist = rating.history;
+  return (
+    <div className="source-rating" style={{ borderLeft: `4px solid ${color}` }}>
+      <div>
+        <span className="source-rating-label">Source reliability:</span>{" "}
+        <strong style={{ color }}>{rating.rating}</strong>
+        {rating.bias && rating.bias !== "Unknown" && (
+          <span className="source-rating-bias"> · {rating.bias}</span>
+        )}
+        {rating.category && <span className="source-rating-cat"> · {rating.category}</span>}
+      </div>
+      {rating.basis === "history" && hist && (
+        <div className="source-rating-sub">
+          Derived from {hist.count} analyses in this system (avg credibility {hist.avg_credibility}/100)
+        </div>
+      )}
+      {rating.basis === "seed+history" && hist && (
+        <div className="source-rating-sub">
+          Baseline {rating.seed_rating}, adjusted over {hist.count} analyses (avg credibility {hist.avg_credibility}/100)
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function ResultsPage({ result, submittedText, limeRequested = true, shapRequested = true, onBack, onClear }) {
   const [displayFc,        setDisplayFc]        = useState(result.fact_check);
   const [finalVerdict,     setFinalVerdict]     = useState(result.final_verdict);
   const [finalExplanation, setFinalExplanation] = useState(result.final_explanation);
   const [aiLoading,        setAiLoading]        = useState(false);
   const [aiError,          setAiError]          = useState("");
   const [showLimeChart,    setShowLimeChart]    = useState(false);
+  const [showShapChart,    setShowShapChart]    = useState(false);
   const [showChunked,      setShowChunked]      = useState(result.chunks?.length > 0);
 
   const handleAiCheck = async () => {
     setAiLoading(true);
     setAiError("");
     try {
-      const res = await fetch(`${API_URL}/fact-check-ai`, {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({
-          text:             submittedText,
-          style_verdict:    result.style_verdict,
-          style_confidence: result.confidence,
-        }),
-      });
-      if (!res.ok) {
-        let msg = `Server error ${res.status}`;
-        try { const body = await res.json(); msg = body.detail || msg; } catch {}
-        setAiError(msg);
+      const res = await axios.post(`${API_URL}/fact-check-ai`, {
+        text:             submittedText,
+        style_verdict:    result.style_verdict,
+        style_confidence: result.confidence,
+      }, { validateStatus: () => true });
+      if (res.status >= 400) {
+        setAiError(res.data?.detail || `Server error ${res.status}`);
         return;
       }
-      const data = await res.json();
+      const data = res.data;
       setDisplayFc(data.fact_check);
       setFinalVerdict(data.final_verdict);
       setFinalExplanation(data.final_explanation);
@@ -190,6 +219,7 @@ export default function ResultsPage({ result, submittedText, limeRequested = tru
             {result.source_name && result.source_name !== "Unknown Source" && (
               <div className="results-source">Source: <strong>{result.source_name}</strong></div>
             )}
+            <SourceRatingBadge rating={result.source_rating} />
           </div>
           <div className="results-actions">
             <button className="btn-back" onClick={onBack}>← Analyse Another</button>
@@ -380,6 +410,56 @@ export default function ResultsPage({ result, submittedText, limeRequested = tru
                       </div>
                     )}
                   </>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {/* ── SHAP explainability (separate, opt-in) ── */}
+        {submittedText && (shapRequested || result.shap_explanation?.length > 0) && (
+          <div className="lime-section">
+            <div className="lime-section-header">
+              <div className="section-title" style={{ margin: 0 }}>
+                Word Influence — SHAP Explainability
+              </div>
+              {result.shap_explanation?.length > 0 && (
+                <div className="hl-legend">
+                  <span className="hl-legend-dot hl-dot-red" /> Misleading
+                  <span className="hl-legend-dot hl-dot-green" style={{ marginLeft: 12 }} /> Reliable
+                </div>
+              )}
+            </div>
+            <p className="lime-desc">
+              {result.shap_explanation?.length > 0
+                ? "SHAP attributes the verdict to each word using game-theoretic Shapley values. Hover a word for its influence strength."
+                : shapRequested
+                  ? "SHAP highlighting is only available when the DistilBERT model is loaded."
+                  : "SHAP was not requested. Enable \"Include word influence analysis (SHAP)\" on the input page and re-analyse."}
+            </p>
+            <HighlightedText text={submittedText} limeData={result.shap_explanation} limeRequested={shapRequested} />
+            {result.shap_explanation?.length > 0 && (
+              <>
+                <button className="btn-lime-toggle" onClick={() => setShowShapChart(v => !v)}>
+                  {showShapChart ? "▲ Hide Top Influencing Words" : "▼ Show Top Influencing Words"}
+                </button>
+                {showShapChart && (
+                  <div className="lime-chart">
+                    {result.shap_explanation.map((item, i) => (
+                      <div key={i} className="lime-row">
+                        <span className="lime-word">{item.word}</span>
+                        <div className="lime-track">
+                          <div
+                            className={`lime-bar ${item.direction === "misleading" ? "lime-bar-red" : "lime-bar-green"}`}
+                            style={{ width: `${Math.round(item.strength * 100)}%` }}
+                          />
+                        </div>
+                        <span className={`lime-pct ${item.direction === "misleading" ? "lime-tag-red" : "lime-tag-green"}`}>
+                          {Math.round(item.strength * 100)}%
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                 )}
               </>
             )}

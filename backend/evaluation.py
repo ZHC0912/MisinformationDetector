@@ -26,12 +26,12 @@ def _load_test_set() -> list:
     if not os.path.exists(_DATA_PATH):
         raise FileNotFoundError(
             f"Evaluation data not found at {_DATA_PATH}. "
-            "Run notebooks/build_eval_data.py first to generate it."
+            "Run notebooks/04_build_eval_data.py first to generate it."
         )
     with open(_DATA_PATH, encoding="utf-8") as f:
         data = json.load(f)
     if not data:
-        raise ValueError("eval_data.json is empty. Re-run notebooks/build_eval_data.py.")
+        raise ValueError("eval_data.json is empty. Re-run notebooks/04_build_eval_data.py.")
     return data
 
 

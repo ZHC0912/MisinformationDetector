@@ -29,6 +29,29 @@ GFCT_URL     = "https://factchecktools.googleapis.com/v1alpha1/claims:search"
 MAX_RETRIES  = 3
 RETRY_DELAY  = 4   # seconds between attempts
 
+# ── Gemini generation settings ─────────────────────────────────
+GEMINI_TEMPERATURE = 0.1    # low = deterministic, factual
+GEMINI_MAX_TOKENS  = 1024
+
+# ── NLP / explainability tunables ──────────────────────────────
+CHUNK_WORD_LIMIT     = 180   # max words per chunk (safe margin under 256-token limit)
+MISLEADING_THRESHOLD = 0.5   # P(misleading) >= this → verdict "Misleading"
+LIME_NUM_SAMPLES     = 100   # LIME perturbation samples per explanation
+
 # ── OCR settings ───────────────────────────────────────────────
 MAX_IMAGE_SIZE = 10 * 1024 * 1024   # 10 MB
 ALLOWED_TYPES  = ["image/jpeg", "image/png", "image/webp", "image/gif"]
+
+# ── MongoDB (source reliability rating + history) ──────────────
+# Leave MONGODB_URI empty to disable the DB — the app degrades gracefully
+# (source rating simply shows as "unrated" and no history is stored).
+MONGODB_URI    = os.getenv("MONGODB_URI", "")
+MONGODB_DB     = os.getenv("MONGODB_DB", "misinfo_detector")
+
+# ── Source rating: dynamic-from-history blending ───────────────
+# Once a source has >= SOURCE_MIN_HISTORY logged assessments, its rating is
+# blended toward (or, for unseeded sources, driven entirely by) the observed
+# average credibility. Weight on observed history grows with the assessment
+# count, saturating at SOURCE_HISTORY_WEIGHT_CAP.
+SOURCE_MIN_HISTORY        = 5
+SOURCE_HISTORY_WEIGHT_CAP = 20

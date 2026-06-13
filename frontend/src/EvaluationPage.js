@@ -5,6 +5,7 @@
 // ============================================================
 
 import React, { useState } from "react";
+import axios from "axios";
 import "./App.css";
 import { API_URL } from "./config";
 
@@ -207,14 +208,12 @@ export default function EvaluationPage({ onBack }) {
   const runEval = async () => {
     setLoading(true); setError(""); setData(null);
     try {
-      const res = await fetch(`${API_URL}/evaluate`);
-      if (!res.ok) {
-        let msg = `Server error ${res.status}`;
-        try { const body = await res.json(); msg = body.detail || msg; } catch {}
-        setError(msg);
+      const res = await axios.get(`${API_URL}/evaluate`, { validateStatus: () => true });
+      if (res.status >= 400) {
+        setError(res.data?.detail || `Server error ${res.status}`);
         return;
       }
-      setData(await res.json());
+      setData(res.data);
     } catch {
       setError("Cannot connect to backend on port 8000. Make sure the server is running.");
     } finally {

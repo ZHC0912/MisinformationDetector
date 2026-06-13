@@ -20,12 +20,14 @@ Run with:
 =============================================================
 """
 
+import asyncio
 import logging
 import re
 import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, UploadFile, File, HTTPException
+from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -46,6 +48,7 @@ import factcheck
 import ocr
 import scraper
 import evaluation
+import source_rating
 from fc_gemini import fact_check_gemini
 
 # ── Rate limiter ───────────────────────────────────────────────
@@ -68,6 +71,16 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+# Log latency for every request — evidence for the ≤5s response-time NFR
+@app.middleware("http")
+async def log_request_time(request: Request, call_next):
+    start = time.perf_counter()
+    response = await call_next(request)
+    duration = time.perf_counter() - start
+    log.info("%s %s → %d in %.3fs", request.method, request.url.path, response.status_code, duration)
+    response.headers["X-Process-Time"] = f"{duration:.3f}"
+    return response
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins     = ["http://localhost:3000", "http://localhost:3001"],
@@ -84,6 +97,8 @@ class AnalyseRequest(BaseModel):
                               description="Name of the source (optional)")
     run_lime:    bool = Field(default=False,
                               description="Run LIME word-influence explainability (adds ~5-10s)")
+    run_shap:    bool = Field(default=False,
+                              description="Run SHAP word-influence explainability (adds ~10-45s)")
 
 class FactCheckResult(BaseModel):
     verdict:          str
@@ -106,6 +121,9 @@ class AnalyseResponse(BaseModel):
     style_explanation: str
     # Explainability
     lime_explanation:  list
+    shap_explanation:  list
+    # Source reliability rating (FR5 — null when source unknown / DB disabled)
+    source_rating:     dict | None
     # Fact-check results
     fact_check:        FactCheckResult
     # Combined
@@ -172,32 +190,33 @@ async def analyse(request: Request, body: AnalyseRequest):
     """
     Analyse article text for credibility.
 
-    Runs two analyses in sequence:
-    1. DistilBERT NLP — checks writing style and linguistic patterns
-    2. Google GFCT — checks factual accuracy of the claims
+    The network fact-check (Google GFCT) runs CONCURRENTLY with the GPU pipeline
+    (DistilBERT NLP + optional LIME/SHAP) via asyncio.gather, so the fact-check
+    latency is hidden under the model work. GPU tasks stay sequential within the
+    pipeline to avoid contention / VRAM OOM on a 4 GB GPU.
 
     Returns combined verdict with full explanation.
     Rate limited to 10 requests/minute per IP.
     """
     start_time = time.time()
 
-    log.info("New analysis — source=%s len=%d", body.source_name, len(body.text))
+    log.info("New analysis — source=%s len=%d lime=%s shap=%s",
+             body.source_name, len(body.text), body.run_lime, body.run_shap)
 
-    # Step 1: NLP analysis
-    log.info("Step 1: Running NLP analysis...")
-    nlp_result = textanalysis.analyse(body.text)
+    # GPU pipeline: NLP, then optional LIME/SHAP — run sequentially (shared GPU).
+    async def _gpu_pipeline():
+        nlp = await run_in_threadpool(textanalysis.analyse, body.text)
+        lime = (await run_in_threadpool(textanalysis.explain_with_lime, body.text)
+                if body.run_lime else [])
+        shap = (await run_in_threadpool(textanalysis.explain_with_shap, body.text)
+                if body.run_shap else [])
+        return nlp, lime, shap
 
-    # Step 2: LIME explainability (opt-in — skipped by default, adds ~5-10s)
-    if body.run_lime:
-        log.info("Step 2: Running LIME explainability...")
-        lime_result = textanalysis.explain_with_lime(body.text)
-    else:
-        log.info("Step 2: LIME skipped (run_lime=False)")
-        lime_result = []
-
-    # Step 3: Fact-check
-    log.info("Step 3: Running fact-check...")
-    fc_result = factcheck.fact_check(body.text)
+    # Run the GPU pipeline and the (network-bound) fact-check at the same time.
+    (nlp_result, lime_result, shap_result), fc_result = await asyncio.gather(
+        _gpu_pipeline(),
+        run_in_threadpool(factcheck.fact_check, body.text),
+    )
 
     # Step 4: Combine
     final_verdict, final_explanation = factcheck.combine_verdicts(
@@ -205,6 +224,10 @@ async def analyse(request: Request, body: AnalyseRequest):
         fc_result["verdict"],        fc_result["confidence"],
         fc_result["fact_check_source"],
     )
+
+    # Step 4b: source reliability rating + history (MongoDB; null if disabled/unknown)
+    src_rating = source_rating.get_rating(body.source_name)
+    source_rating.record_assessment(body.source_name, final_verdict, nlp_result["credibility_score"])
 
     processing_time = round(time.time() - start_time, 3)
     heuristic_mode  = nlp_result["mode"] == "heuristic"
@@ -219,6 +242,8 @@ async def analyse(request: Request, body: AnalyseRequest):
         key_features      = nlp_result["key_features"],
         style_explanation = nlp_result["style_explanation"],
         lime_explanation  = lime_result,
+        shap_explanation  = shap_result,
+        source_rating     = src_rating,
         fact_check        = FactCheckResult(**fc_result),
         final_verdict     = final_verdict,
         final_explanation = final_explanation,
