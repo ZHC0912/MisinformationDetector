@@ -23,7 +23,7 @@ export default function FactCheckCard({ item }: { item: FactCheckItem }) {
   const date = formatDate(item.reviewDate);
 
   return (
-    <article className="flex flex-col rounded-2xl border border-border bg-card p-5 shadow-card transition-shadow hover:shadow-card-hover">
+    <article className="flex min-h-[240px] flex-col rounded-2xl border border-border bg-card p-5 shadow-card transition-shadow hover:shadow-card-hover">
       <div className="flex items-center justify-between gap-2">
         <span className="truncate text-xs font-bold uppercase tracking-wider text-brand">
           {item.publisher || "Fact-checker"}
@@ -45,7 +45,7 @@ export default function FactCheckCard({ item }: { item: FactCheckItem }) {
         </p>
       )}
 
-      <div className="mt-4 flex items-center justify-between gap-2 border-t border-border pt-4">
+      <div className="mt-auto flex items-center justify-between gap-2 border-t border-border pt-4">
         <VerdictChip verdict={item.verdict} ratingClass={item.ratingClass} />
         {item.url && (
           <a
