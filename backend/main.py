@@ -21,10 +21,14 @@ Run with:
 """
 
 import asyncio
+import ipaddress
 import logging
+import os
 import re
+import socket
 import time
 from contextlib import asynccontextmanager
+from urllib.parse import urlparse
 
 from fastapi import FastAPI, Request, UploadFile, File, HTTPException
 from fastapi.concurrency import run_in_threadpool
@@ -43,8 +47,48 @@ log = logging.getLogger(__name__)
 
 _URL_RE = re.compile(r'^https?://.+\..+', re.IGNORECASE)
 
+
+def _is_safe_public_url(url: str) -> bool:
+    """
+    SSRF guard for /scrape-url: allow only http/https to a PUBLIC IP.
+    Rejects loopback / private / link-local / reserved ranges so the server
+    can't be used to fetch internal services or cloud-metadata endpoints
+    (e.g. http://169.254.169.254/, http://127.0.0.1:8000/, http://10.0.0.5/).
+    """
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        return False
+    try:
+        infos = socket.getaddrinfo(parsed.hostname, None)
+    except socket.gaierror:
+        return False
+    for info in infos:
+        try:
+            ip = ipaddress.ip_address(info[4][0])
+        except ValueError:
+            return False
+        if (ip.is_private or ip.is_loopback or ip.is_link_local
+                or ip.is_reserved or ip.is_multicast or ip.is_unspecified):
+            return False
+    return True
+
+
+# Source names we treat as "no real source" — blank or placeholder. Analyses with
+# these are NEITHER looked up in NOR written to the source-history collection, so
+# anonymous / blank-source submissions can't pool together under one "unknown" key
+# and fabricate a history-based rating for the next blank-source user
+# (see source_rating.get_rating's seed+history blending).
+_UNKNOWN_SOURCE_NAMES = {"", "unknown", "unknown source"}
+
+
+def _is_named_source(source_name: str) -> bool:
+    """True only when a specific, non-placeholder source name was provided."""
+    return (source_name or "").strip().lower() not in _UNKNOWN_SOURCE_NAMES
+
+
 import textanalysis
 import factcheck
+import factcheck_feed
 import ocr
 import scraper
 import evaluation
@@ -81,11 +125,15 @@ async def log_request_time(request: Request, call_next):
     response.headers["X-Process-Time"] = f"{duration:.3f}"
     return response
 
+# Allowed browser origins — override in production via CORS_ORIGINS (comma-separated).
+_cors_origins = [o.strip() for o in os.getenv(
+    "CORS_ORIGINS", "http://localhost:3000,http://localhost:3001").split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins     = ["http://localhost:3000", "http://localhost:3001"],
-    allow_credentials = True,
-    allow_methods     = ["*"],
+    allow_origins     = _cors_origins,
+    allow_credentials = False,          # no cookies/auth are used — keep this off
+    allow_methods     = ["GET", "POST"],
     allow_headers     = ["*"],
 )
 
@@ -93,7 +141,7 @@ app.add_middleware(
 class AnalyseRequest(BaseModel):
     text:        str  = Field(..., min_length=20, max_length=20000,
                               description="Article or post text to analyse")
-    source_name: str  = Field(default="Unknown",
+    source_name: str  = Field(default="Unknown Source", max_length=200,
                               description="Name of the source (optional)")
     run_lime:    bool = Field(default=False,
                               description="Run LIME word-influence explainability (adds ~5-10s)")
@@ -178,7 +226,8 @@ async def root():
             "analyse":      "POST /analyse      — analyse article text",
             "scrape_url":   "POST /scrape-url   — fetch and extract article from URL",
             "extract_text": "POST /extract-text — extract text from image",
-            "evaluate":     "GET  /evaluate     — run model evaluation (LIAR benchmark)",
+            "evaluate":     "GET  /evaluate        — read latest saved evaluation (LIAR benchmark)",
+            "evaluate_rerun": "POST /evaluate/rerun — run a fresh evaluation + persist it",
             "model_info":   "GET  /model-info   — model details",
         }
     }
@@ -225,9 +274,14 @@ async def analyse(request: Request, body: AnalyseRequest):
         fc_result["fact_check_source"],
     )
 
-    # Step 4b: source reliability rating + history (MongoDB; null if disabled/unknown)
-    src_rating = source_rating.get_rating(body.source_name)
-    source_rating.record_assessment(body.source_name, final_verdict, nlp_result["credibility_score"])
+    # Step 4b: source reliability rating + history (MongoDB; null if disabled/unknown).
+    # Skip BOTH the lookup and the history write for blank / placeholder sources so
+    # anonymous submissions never pool under one key and produce a bogus rating.
+    if _is_named_source(body.source_name):
+        src_rating = source_rating.get_rating(body.source_name)
+        source_rating.record_assessment(body.source_name, final_verdict, nlp_result["credibility_score"])
+    else:
+        src_rating = None
 
     processing_time = round(time.time() - start_time, 3)
     heuristic_mode  = nlp_result["mode"] == "heuristic"
@@ -272,12 +326,17 @@ async def extract_text(request: Request, file: UploadFile = File(...)):
             detail      = f"Unsupported file type: {content_type}. Please upload JPG, PNG, WEBP, or GIF."
         )
 
-    image_bytes = await file.read()
-    if len(image_bytes) > ocr.MAX_IMAGE_SIZE:
-        raise HTTPException(
-            status_code = 400,
-            detail      = "Image too large. Maximum size is 10MB."
-        )
+    # Enforce the size cap WHILE streaming, before the whole body is buffered —
+    # otherwise a multi-GB upload is read fully into memory before we reject it.
+    buf = bytearray()
+    while chunk := await file.read(64 * 1024):
+        buf += chunk
+        if len(buf) > ocr.MAX_IMAGE_SIZE:
+            raise HTTPException(
+                status_code = 400,
+                detail      = "Image too large. Maximum size is 10MB."
+            )
+    image_bytes = bytes(buf)
 
     log.info("OCR request: %s (%d bytes)", file.filename, len(image_bytes))
 
@@ -303,6 +362,10 @@ async def scrape_url(request: Request, body: ScrapeRequest):
     url = body.url.strip()
     if not _URL_RE.match(url):
         raise HTTPException(status_code=400, detail="Invalid URL. Must start with http:// or https://")
+    if not _is_safe_public_url(url):
+        raise HTTPException(
+            status_code=400,
+            detail="This URL cannot be fetched. Only public http/https addresses are allowed.")
 
     log.info("Scrape request: %s", url)
     result = scraper.scrape_url(url)
@@ -335,17 +398,87 @@ async def fact_check_ai(request: Request, body: AiFactCheckRequest):
 
 
 @app.get("/evaluate", tags=["Evaluation"])
-async def run_evaluation():
+async def get_evaluation():
     """
-    Evaluate the NLP classifier against the LIAR benchmark test set (896 items).
-    Returns accuracy, F1, AUC-ROC, confusion matrix, per-class metrics, and ROC curve.
+    Return the most recently PERSISTED evaluation result instantly — no re-run.
+
+    Reads backend/liar_test_metrics.json (written by POST /evaluate/rerun or by
+    running evaluation.py directly). Returns {"available": false} if no evaluation
+    has ever been persisted, so the dashboard can show an empty state instead of
+    erroring on a fresh clone.
+    """
+    saved = evaluation.load_saved_result()
+    if saved is None:
+        return {"available": False}
+    return saved
+
+
+@app.post("/evaluate/rerun", tags=["Evaluation"])
+@limiter.limit("5/minute")
+async def rerun_evaluation(request: Request):
+    """
+    Run a FRESH evaluation against the LIAR benchmark test set (896 items),
+    overwrite the persisted result, and return it.
+
+    Expensive: loads the model and runs 896 inferences — hence rate-limited and
+    run off the event loop. Returns accuracy, F1, AUC-ROC, confusion matrix,
+    per-class metrics, and ROC curve.
     """
     try:
-        return evaluation.run_evaluation()
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=503, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Evaluation failed: {str(e)}")
+        result = await run_in_threadpool(evaluation.run_evaluation)
+        return evaluation.save_result(result)
+    except FileNotFoundError:
+        raise HTTPException(status_code=503, detail="Evaluation dataset or model is not available.")
+    except Exception:
+        log.exception("Evaluation failed")
+        raise HTTPException(status_code=500, detail="Evaluation failed. Please try again later.")
+
+
+@app.get("/api/fact-checks", tags=["Feed"])
+@limiter.limit("30/minute")
+async def api_fact_checks(
+    request: Request,
+    query: str = "",
+    lang: str = "en",
+    max_age_days: int = 30,
+):
+    """
+    Public "Recently fact-checked" feed: real published fact-checks from Google's
+    Fact Check Tools API (ClaimReview corpus), for a search topic or a default
+    blend of topics when `query` is blank.
+
+    The Google API key is used server-side only and never reaches the browser.
+    Results are cached per query (45 min) to respect API quota. Ordered by review
+    recency — the API exposes no popularity/"trending" signal.
+
+    Rate limited to 30 requests/minute per IP.
+    """
+    max_age_days = max(0, min(int(max_age_days), 365))
+    items = await run_in_threadpool(
+        factcheck_feed.get_fact_checks, query, lang, max_age_days
+    )
+    return {
+        "query":       query.strip(),
+        "count":       len(items),
+        "items":       items,
+        "attribution": "Google Fact Check Tools API — ClaimReview corpus",
+    }
+
+
+@app.get("/api/sources", tags=["Feed"])
+@limiter.limit("30/minute")
+async def api_sources(request: Request):
+    """
+    Seeded source-reliability ratings (FR5) for the reliability sidebar.
+
+    Real data owned by this project: Media Bias/Fact Check-style factual-reporting
+    tiers stored in MongoDB (falls back to the on-disk seed file if the DB is
+    disabled). Ordered best-rated first. No invented aggregate percentages.
+
+    Rate limited to 30 requests/minute per IP.
+    """
+    sources = await run_in_threadpool(source_rating.list_seeded_ratings)
+    return {"count": len(sources), "sources": sources}
 
 
 @app.get("/model-info", tags=["Health"])

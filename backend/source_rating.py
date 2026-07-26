@@ -16,7 +16,9 @@ keeps working (rating shows as "unrated", history simply isn't recorded).
 =============================================================
 """
 
+import json
 import logging
+import os
 import re
 import time
 from urllib.parse import urlparse
@@ -24,6 +26,8 @@ from urllib.parse import urlparse
 import config
 
 log = logging.getLogger(__name__)
+
+_SEED_FILE = os.path.join(os.path.dirname(__file__), "source_ratings_seed.json")
 
 _client = None
 _db     = None
@@ -170,6 +174,52 @@ def record_assessment(source: str, verdict: str, credibility_score: int) -> None
         })
     except Exception as e:
         log.warning("[source_rating] history insert failed: %s", e)
+
+
+def _load_seed_file() -> list[dict]:
+    """Read the on-disk seed ratings (same data that seeds Mongo). Never raises."""
+    try:
+        with open(_SEED_FILE, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        log.warning("[source_rating] could not read seed file: %s", e)
+        return []
+
+
+def list_seeded_ratings() -> list[dict]:
+    """
+    Return every seeded source rating for the public reliability panel, ordered
+    best-rated first. Reads the MongoDB `source_ratings` collection; if the DB is
+    unavailable it falls back to the on-disk seed JSON (the SAME real data used to
+    seed Mongo), so the panel is never empty in a DB-less dev run.
+
+    Each item: { domain, name, rating, bias, category, tier_index }.
+    """
+    db   = _get_db()
+    docs = None
+    if db is not None:
+        try:
+            docs = list(db.source_ratings.find({}))
+        except Exception as e:
+            log.warning("[source_rating] list from Mongo failed (%s) — using seed file", e)
+            docs = None
+    if not docs:
+        docs = _load_seed_file()
+
+    out = []
+    for d in docs:
+        rating = d.get("rating")
+        tier   = RATING_TIERS.index(rating) if rating in RATING_TIERS else None
+        out.append({
+            "domain":     d.get("_id") or d.get("domain", ""),
+            "name":       d.get("name", ""),
+            "rating":     rating,
+            "bias":       d.get("bias", "Unknown"),
+            "category":   d.get("category", ""),
+            "tier_index": tier,
+        })
+    out.sort(key=lambda x: (x["tier_index"] if x["tier_index"] is not None else -1), reverse=True)
+    return out
 
 
 def get_history_summary(source: str) -> dict | None:
