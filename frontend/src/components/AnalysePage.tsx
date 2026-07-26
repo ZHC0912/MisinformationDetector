@@ -12,9 +12,10 @@
 // and is NOT modified — analysis still flips the whole page into it.
 // ============================================================
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Loader2, TriangleAlert, Newspaper } from "lucide-react";
+import { cn } from "@/lib/utils";
 import ResultsPage from "@/components/ResultsPage";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import SkeletonResults from "@/components/SkeletonResults";
@@ -43,19 +44,34 @@ export default function AnalysePage() {
   const [announce, setAnnounce] = useState(""); // aria-live announcements
   const [expanded, setExpanded] = useState(false); // hero progressive disclosure
 
-  // ── Fact-check feed state (driven by the global navbar's ?q=) ─
+  // ── Fact-check feed state ───────────────────────────────────
+  // Two lazy-loaded sections (Malaysia default / Foreign). A global navbar ?q=
+  // search overrides the region and searches the whole corpus. Only the ACTIVE
+  // section is fetched; a client cache means switching back never re-fetches.
   const [searchParams] = useSearchParams();
-  const feedQuery = searchParams.get("q") ?? "";
+  const feedQuery = (searchParams.get("q") ?? "").trim();
+  const searching = feedQuery.length > 0;
+  const [region, setRegion] = useState<"malaysia" | "foreign">("malaysia");
   const [feedItems, setFeedItems] = useState<FactCheckItem[] | null>(null);
   const [feedError, setFeedError] = useState("");
+  const feedCache = useRef<Record<string, FactCheckItem[]>>({});
 
   useEffect(() => {
+    const key = searching ? `q:${feedQuery.toLowerCase()}` : `r:${region}`;
+    const cached = feedCache.current[key];
+    if (cached) {
+      setFeedItems(cached);
+      setFeedError("");
+      return;
+    }
     let cancelled = false;
     setFeedItems(null);
     setFeedError("");
-    getFactChecks(feedQuery)
+    getFactChecks(searching ? { query: feedQuery } : { region })
       .then((res) => {
-        if (!cancelled) setFeedItems(res.items);
+        if (cancelled) return;
+        feedCache.current[key] = res.items;
+        setFeedItems(res.items);
       })
       .catch((err) => {
         if (!cancelled)
@@ -64,7 +80,7 @@ export default function AnalysePage() {
     return () => {
       cancelled = true;
     };
-  }, [feedQuery]);
+  }, [searching, feedQuery, region]);
 
   const handleUrlSuccess = ({ text: t, siteName, wordCount, label }: UrlSuccess) => {
     setText(t);
@@ -207,6 +223,32 @@ export default function AnalysePage() {
               </p>
             </div>
 
+            {!searching && (
+              <div
+                className="mt-4 inline-flex rounded-lg border border-border bg-card p-0.5 shadow-sm"
+                role="tablist"
+                aria-label="Fact-check region"
+              >
+                {(["malaysia", "foreign"] as const).map((r) => (
+                  <button
+                    key={r}
+                    type="button"
+                    role="tab"
+                    aria-selected={region === r}
+                    onClick={() => setRegion(r)}
+                    className={cn(
+                      "rounded-md px-4 py-1.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand",
+                      region === r
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    {r === "malaysia" ? "Malaysia" : "Foreign"}
+                  </button>
+                ))}
+              </div>
+            )}
+
             <div className="mt-5">
               {feedError ? (
                 <div className="flex items-center gap-2 rounded-2xl border border-border bg-card p-6 text-sm text-muted-foreground shadow-card">
@@ -220,8 +262,11 @@ export default function AnalysePage() {
               ) : feedItems.length === 0 ? (
                 <div className="flex flex-col items-center gap-2 rounded-2xl border border-border bg-card p-10 text-center text-sm text-muted-foreground shadow-card">
                   <Newspaper className="h-6 w-6 text-muted-foreground/60" />
-                  No indexed fact-checks found
-                  {feedQuery ? ` for “${feedQuery}”.` : "."} Try another topic.
+                  {searching
+                    ? `No attributed fact-checks found for “${feedQuery}”. Try another topic.`
+                    : `No attributed fact-checks available in the ${
+                        region === "malaysia" ? "Malaysia" : "Foreign"
+                      } section right now. Check back later.`}
                 </div>
               ) : (
                 <div className="grid gap-4 sm:grid-cols-2">

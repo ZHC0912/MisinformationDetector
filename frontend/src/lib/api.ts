@@ -101,17 +101,18 @@ export async function factCheckAi(
   return res.data as AiFactCheckResult;
 }
 
-/** GET the public "Recently fact-checked" feed. Real Google ClaimReview data;
- *  the backend proxies the key server-side and caches per query. */
+/** GET the public "Recently fact-checked" feed of attributed claims. Real Google
+ *  ClaimReview data; the backend proxies the key server-side and caches per
+ *  region/query. Pass `query` for an explicit search (overrides region), or
+ *  `region` ('malaysia' | 'foreign') to select a section. */
 export async function getFactChecks(
-  query = "",
-  opts: { lang?: string; maxAgeDays?: number } = {}
+  opts: { query?: string; region?: string; lang?: string } = {}
 ): Promise<FactChecksResponse> {
   const res = await client.get("/api/fact-checks", {
     params: {
-      query,
+      query: opts.query ?? "",
+      region: opts.region ?? "malaysia",
       lang: opts.lang ?? "en",
-      max_age_days: opts.maxAgeDays ?? 30,
     },
   });
   if (res.status >= 400)

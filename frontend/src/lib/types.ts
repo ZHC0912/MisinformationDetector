@@ -100,6 +100,7 @@ export interface FactCheckItem {
 
 export interface FactChecksResponse {
   query: string;
+  region?: string;
   count: number;
   items: FactCheckItem[];
   attribution: string;
