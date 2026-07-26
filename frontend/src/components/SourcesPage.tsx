@@ -108,7 +108,7 @@ export default function SourcesPage() {
 
   return (
     <>
-      <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-10">
+      <main className="w-full px-6 py-8 sm:px-8 sm:py-10">
         {/* Top-left header */}
         <Link
           to="/app"
