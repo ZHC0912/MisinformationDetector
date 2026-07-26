@@ -43,14 +43,24 @@ _CACHE_TTL_SECONDS = 2 * 60 * 60      # 2 hours — fewer cold-miss calls to Goo
 _cache: dict[str, tuple[float, list]] = {}
 _cache_lock = threading.Lock()
 
-# Default topics used when no search query is supplied, so the feed has content
-# on first load. The navbar search refines this to a single user topic.
-# Two neutral, high-yield topics only (one Google call each on a cold miss) —
-# kept small deliberately to limit API usage; the attributed-claimant filter
-# below then narrows these to claims made by a named speaker.
-DEFAULT_QUERIES = ["health", "election"]
+# The feed is split into two regions. Each region is a small set of
+# (query, languageCode) pairs — one Google call per pair on a cold miss.
+# Google has NO country filter, so region is approximated by keyword/language:
+#   - malaysia: "Malaysia" in English + Malay (surfaces the local publisher
+#     "Semakan Fakta"); Malaysian coverage is sparse in the last 30 days, so this
+#     region uses NO age limit and takes the 8 most recent by review date.
+#   - foreign : neutral global topics, with Malaysia-matching cards excluded so
+#     the two regions never duplicate each other.
+REGION_QUERIES: dict[str, list[tuple[str, str]]] = {
+    "malaysia": [("Malaysia", "en"), ("Malaysia", "ms")],
+    "foreign":  [("health", "en"), ("election", "en")],
+}
+# Per-region recency window (0 = no maxAgeDays filter; sort still puts newest first).
+REGION_MAX_AGE: dict[str, int] = {"malaysia": 0, "foreign": 30}
 
-_MAX_ITEMS = 24                        # cap cards returned to the frontend
+_DEFAULT_REGION = "malaysia"
+_SEARCH_MAX_AGE = 30                    # age window for an explicit navbar-search query
+_MAX_ITEMS = 8                         # hard cap on cards per section
 
 
 def _cache_get(key: str) -> list | None:
@@ -123,41 +133,70 @@ def _dedupe(cards: list) -> list:
     return out
 
 
-def get_fact_checks(query: str = "", lang: str = "en", max_age_days: int = 30) -> list:
+def _is_malaysia(card: dict) -> bool:
+    """Heuristic: does this card relate to Malaysia? Used to keep the two regions
+    disjoint (excluded from the 'foreign' section)."""
+    blob = f"{card['claim']} {card['claimant']} {card['publisher']}".lower()
+    return "malaysia" in blob or "malaysian" in blob
+
+
+def _finalise(cards: list) -> list:
+    """Shared post-processing: attributed-claimant filter, dedupe, newest-first, cap.
+
+    Keep only claims with a named speaker (claimant) — this is what makes the feed
+    'attributed claims by public figures' WITHOUT hand-picking names (which would
+    introduce selection bias)."""
+    cards = [c for c in cards if c["claimant"].strip()]
+    cards = _dedupe(cards)
+    cards.sort(key=lambda c: c["reviewDate"], reverse=True)   # only honest ordering
+    return cards[:_MAX_ITEMS]
+
+
+def get_fact_checks(query: str = "", region: str = _DEFAULT_REGION, lang: str = "en") -> list:
     """
-    Return a list of recent, real fact-check cards for `query` (or a default
-    blend of topics when `query` is blank). Cached per query for _CACHE_TTL.
+    Return up to _MAX_ITEMS real, attributed fact-check cards.
+
+    - If `query` is given: an explicit navbar search across the corpus (region
+      ignored) at the recent-search window.
+    - Otherwise: the `region` section ('malaysia' | 'foreign'), each a small blend
+      of (query, language) pairs. 'foreign' excludes Malaysia-matching cards so the
+      two sections don't overlap.
+
+    Cached per (query | region) for _CACHE_TTL. Only the requested section is
+    fetched — the frontend lazy-loads regions, so both are never fetched at once.
 
     Card shape: { claim, claimant, publisher, verdict, ratingClass, reviewDate, url }
-    Ordered by reviewDate, newest first (the API exposes no popularity ranking).
     """
     query = (query or "").strip()
     lang  = (lang or "en").strip() or "en"
-    key   = f"{query.lower()}|{lang}|{max_age_days}"
-
-    cached = _cache_get(key)
-    if cached is not None:
-        log.info("[feed] cache hit key=%r (%d items)", key, len(cached))
-        return cached
 
     if query:
-        cards = _search_google(query, lang, max_age_days)
-    else:
-        # Blend a few default topics so the panel is populated on first load.
-        cards = []
-        for q in DEFAULT_QUERIES:
-            cards.extend(_search_google(q, lang, max_age_days))
+        key = f"q:{query.lower()}|{lang}"
+        cached = _cache_get(key)
+        if cached is not None:
+            log.info("[feed] cache hit %s (%d items)", key, len(cached))
+            return cached
+        cards = _finalise(_search_google(query, lang, _SEARCH_MAX_AGE))
+        _cache_put(key, cards)
+        log.info("[feed] cache miss %s → %d items", key, len(cards))
+        return cards
 
-    # Influential-figures focus: keep only claims with a named speaker. An
-    # attributed claimant is what makes the feed "claims by public figures"
-    # WITHOUT hand-picking names (which would introduce selection bias).
-    cards = [c for c in cards if c["claimant"].strip()]
+    region = region if region in REGION_QUERIES else _DEFAULT_REGION
+    key = f"r:{region}"
+    cached = _cache_get(key)
+    if cached is not None:
+        log.info("[feed] cache hit %s (%d items)", key, len(cached))
+        return cached
 
-    cards = _dedupe(cards)
-    # Newest review first — the only ordering the API data honestly supports.
-    cards.sort(key=lambda c: c["reviewDate"], reverse=True)
-    cards = cards[:_MAX_ITEMS]
+    age = REGION_MAX_AGE.get(region, 0)
+    cards: list = []
+    for q, qlang in REGION_QUERIES[region]:      # one Google call per (query, lang) pair
+        cards.extend(_search_google(q, qlang, age))
 
+    if region == "foreign":
+        cards = [c for c in cards if not _is_malaysia(c)]
+
+    cards = _finalise(cards)
     _cache_put(key, cards)
-    log.info("[feed] cache miss key=%r → %d items fetched", key, len(cards))
+    log.info("[feed] cache miss %s → %d items", key, len(cards))
     return cards

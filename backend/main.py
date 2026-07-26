@@ -439,26 +439,29 @@ async def rerun_evaluation(request: Request):
 async def api_fact_checks(
     request: Request,
     query: str = "",
+    region: str = "malaysia",
     lang: str = "en",
-    max_age_days: int = 30,
 ):
     """
-    Public "Recently fact-checked" feed: real published fact-checks from Google's
-    Fact Check Tools API (ClaimReview corpus), for a search topic or a default
-    blend of topics when `query` is blank.
+    Public "Recently fact-checked" feed of ATTRIBUTED claims (named speaker) from
+    Google's Fact Check Tools API (ClaimReview corpus).
+
+    - `region` ('malaysia' | 'foreign') selects a section when `query` is blank;
+      only the requested section is fetched (the frontend lazy-loads regions).
+    - `query` (navbar search) overrides the region and searches the whole corpus.
 
     The Google API key is used server-side only and never reaches the browser.
-    Results are cached per query (45 min) to respect API quota. Ordered by review
-    recency — the API exposes no popularity/"trending" signal.
+    Each section is cached (2h) to respect API quota and capped at 8 cards.
+    Ordered by review recency — the API exposes no popularity/"trending" signal.
 
     Rate limited to 30 requests/minute per IP.
     """
-    max_age_days = max(0, min(int(max_age_days), 365))
     items = await run_in_threadpool(
-        factcheck_feed.get_fact_checks, query, lang, max_age_days
+        factcheck_feed.get_fact_checks, query, region, lang
     )
     return {
         "query":       query.strip(),
+        "region":      region,
         "count":       len(items),
         "items":       items,
         "attribution": "Google Fact Check Tools API — ClaimReview corpus",
