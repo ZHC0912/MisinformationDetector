@@ -12,6 +12,12 @@ It queries the same Google Fact Check Tools API (claims:search) with the
 server-side key, normalises each ClaimReview into a flat card shape, and caches
 results per query so repeated browsing does not burn API quota.
 
+Scope: the feed focuses on ATTRIBUTED CLAIMS — fact-checked statements that have
+a named speaker (`claimant`) — so it covers claims by public figures, the
+"influential sources" half of the project that isn't the outlet reliability
+index. Cards with no claimant are dropped. Speakers are surfaced by FILTERING,
+never hand-picked, to avoid selection bias.
+
 IMPORTANT (viva-defensible): every item returned is a REAL published fact-check
 from Google's ClaimReview corpus (PolitiFact, Snopes, AFP, FactCheck.org, ...).
 Nothing here is mock data. The API has no popularity/"trending" signal, so the
@@ -33,13 +39,16 @@ log = logging.getLogger(__name__)
 # ── Cache ───────────────────────────────────────────────────────
 # In-memory TTL cache, keyed by (query|lang|max_age_days). Respects API quota:
 # the same topic browsed repeatedly hits Google at most once per TTL window.
-_CACHE_TTL_SECONDS = 45 * 60          # 45 minutes
+_CACHE_TTL_SECONDS = 2 * 60 * 60      # 2 hours — fewer cold-miss calls to Google
 _cache: dict[str, tuple[float, list]] = {}
 _cache_lock = threading.Lock()
 
 # Default topics used when no search query is supplied, so the feed has content
 # on first load. The navbar search refines this to a single user topic.
-DEFAULT_QUERIES = ["health", "climate", "election", "economy"]
+# Two neutral, high-yield topics only (one Google call each on a cold miss) —
+# kept small deliberately to limit API usage; the attributed-claimant filter
+# below then narrows these to claims made by a named speaker.
+DEFAULT_QUERIES = ["health", "election"]
 
 _MAX_ITEMS = 24                        # cap cards returned to the frontend
 
@@ -138,6 +147,11 @@ def get_fact_checks(query: str = "", lang: str = "en", max_age_days: int = 30) -
         cards = []
         for q in DEFAULT_QUERIES:
             cards.extend(_search_google(q, lang, max_age_days))
+
+    # Influential-figures focus: keep only claims with a named speaker. An
+    # attributed claimant is what makes the feed "claims by public figures"
+    # WITHOUT hand-picking names (which would introduce selection bias).
+    cards = [c for c in cards if c["claimant"].strip()]
 
     cards = _dedupe(cards)
     # Newest review first — the only ordering the API data honestly supports.

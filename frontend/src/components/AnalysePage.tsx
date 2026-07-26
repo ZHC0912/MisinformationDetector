@@ -195,7 +195,11 @@ export default function AnalysePage() {
                 <p className="mt-1 font-display text-xl font-bold tracking-tight text-foreground">
                   {feedQuery
                     ? `Results for “${feedQuery}”`
-                    : "Latest published fact-checks"}
+                    : "Attributed claims by public figures"}
+                </p>
+                <p className="mt-1 max-w-xl text-sm text-muted-foreground">
+                  Fact-checked statements attributed to a named speaker, drawn
+                  from Google&rsquo;s ClaimReview corpus.
                 </p>
               </div>
               <p className="text-xs text-muted-foreground">
