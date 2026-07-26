@@ -110,22 +110,24 @@ export default function SourcesPage() {
     <>
       <main className="w-full px-6 py-8 sm:px-8 sm:py-10">
         {/* Top-left header */}
-        <Link
-          to="/app"
-          className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-        >
-          <ArrowLeft className="h-4 w-4" /> Back to analyse
-        </Link>
 
-        <header className="mt-4 max-w-2xl">
-          <h1 className="font-display text-2xl font-extrabold tracking-tight text-foreground sm:text-3xl">
-            Source reliability index
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Factual-reporting tiers for every seeded outlet, based on Media
-            Bias/Fact Check-style levels. Ratings self-update from the system's
-            own accumulated verdict history per source.
-          </p>
+        <header className="mt-4 flex items-start justify-between gap-4">
+          <div className="max-w-2xl">
+            <h1 className="font-display text-2xl font-extrabold tracking-tight text-foreground sm:text-3xl">
+              Source reliability index
+            </h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Factual-reporting tiers for every seeded outlet, based on Media
+              Bias/Fact Check-style levels. Ratings self-update from the system's
+              own accumulated verdict history per source.
+            </p>
+          </div>
+          <Link
+            to="/app"
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+          >
+            <ArrowLeft className="h-4 w-4" /> Back to analyse
+          </Link>
         </header>
 
         {error ? (
