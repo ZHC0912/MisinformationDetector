@@ -36,6 +36,10 @@ LIAR_Dataset/
 Thumbs.db
 *.log
 
+# ── Colab transfer bundles (regenerated, too large for git) ──
+colab_bundle.zip
+results.zip
+
 # ── Working scratch / junk ────────────────────────────────────
 .claude/
 /restriction.png
