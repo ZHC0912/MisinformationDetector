@@ -6,12 +6,18 @@
 
 import { Outlet } from "react-router-dom";
 import Navbar from "@/components/Navbar";
+import Footer from "@/components/Footer";
 
 export default function Layout() {
+  // Sticky-footer column: the routed content grows to fill, so the shared MIDAS
+  // Footer sits at the bottom on short pages instead of floating mid-screen.
   return (
-    <div className="min-h-screen bg-background">
+    <div className="flex min-h-screen flex-col bg-background">
       <Navbar />
-      <Outlet />
+      <div className="flex-1">
+        <Outlet />
+      </div>
+      <Footer />
     </div>
   );
 }

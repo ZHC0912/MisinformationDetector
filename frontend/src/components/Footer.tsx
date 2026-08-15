@@ -1,7 +1,7 @@
 // ============================================================
 // FOOTER (MIDAS identity) — dark navy surface.
-// Rendered inside the /app page composition (not global) so it doesn't
-// disturb the landing / evaluation pages.
+// Rendered globally from Layout (below the routed Outlet), so every route
+// shows exactly one footer. Do not add it manually inside a page.
 // ============================================================
 
 import { Link } from "react-router-dom";

@@ -24,8 +24,7 @@ import OcrModal, { type OcrSuccess } from "@/components/OcrModal";
 import HeroVerify from "@/components/HeroVerify";
 import FactCheckCard from "@/components/FactCheckCard";
 import ReliabilityCard from "@/components/ReliabilityCard";
-import Footer from "@/components/Footer";
-import { analyse, getFactChecks, ApiError } from "@/lib/api";
+import { analyse, scrapeUrl, getFactChecks, ApiError } from "@/lib/api";
 import type { AnalyseResult, FactCheckItem } from "@/lib/types";
 
 export default function AnalysePage() {
@@ -35,6 +34,7 @@ export default function AnalysePage() {
   const [result, setResult] = useState<AnalyseResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [quickError, setQuickError] = useState(""); // pill URL quick-lane feedback
   const [successMsg, setSuccessMsg] = useState("");
   const [modal, setModal] = useState<null | "url" | "ocr">(null);
   const [showResults, setShowResults] = useState(false);
@@ -42,7 +42,6 @@ export default function AnalysePage() {
   // opt-in — keeps the default path within the ≤5s NFR
   const [runShap, setRunShap] = useState(false);
   const [announce, setAnnounce] = useState(""); // aria-live announcements
-  const [expanded, setExpanded] = useState(false); // hero progressive disclosure
 
   // ── Fact-check feed state ───────────────────────────────────
   // Two lazy-loaded sections (Malaysia default / Foreign). A global navbar ?q=
@@ -86,45 +85,109 @@ export default function AnalysePage() {
     setText(t);
     if (siteName && !sourceName) setSourceName(siteName);
     setSuccessMsg(`Extracted ${wordCount} words from "${label}"`);
-    setExpanded(true);
     setModal(null);
   };
 
   const handleOcrSuccess = ({ text: t, wordCount }: OcrSuccess) => {
     setText(t);
     setSuccessMsg(`Extracted ${wordCount} words from image`);
-    setExpanded(true);
     setModal(null);
   };
 
-  const handleAnalyse = useCallback(async () => {
-    if (text.trim().length < 20) {
-      setError("Please enter at least 20 characters.");
-      return;
-    }
-    setError("");
-    setSuccessMsg("");
-    setLoading(true);
-    setResult(null);
-    setAnnounce("Analysing content, please wait.");
-    try {
-      const data = await analyse({
-        text: text.trim(),
-        source_name: sourceName.trim() || "Unknown Source",
-        run_lime: runLime,
-        run_shap: runShap,
-      });
-      setResult(data);
-      setShowResults(true);
-      setAnnounce(`Analysis complete. Final verdict: ${data.final_verdict}.`);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Unknown error";
-      setError("Cannot connect to backend on port 8000. Error: " + msg);
-      setAnnounce("Analysis failed. " + msg);
-    } finally {
-      setLoading(false);
-    }
-  }, [text, sourceName, runLime, runShap]);
+  // Single analyse path. Callers may pass overrides (used by the URL quick-lane,
+  // which supplies freshly-fetched text and forces SHAP/LIME off) — with no
+  // overrides it reads the form state exactly as before.
+  const handleAnalyse = useCallback(
+    async (opts?: {
+      textOverride?: string;
+      sourceOverride?: string;
+      runLimeOverride?: boolean;
+      runShapOverride?: boolean;
+    }) => {
+      const analysisText = (opts?.textOverride ?? text).trim();
+      if (analysisText.length < 20) {
+        setError("Please enter at least 20 characters.");
+        return;
+      }
+      setError("");
+      setSuccessMsg("");
+      setLoading(true);
+      setResult(null);
+      setAnnounce("Analysing content, please wait.");
+      try {
+        const data = await analyse({
+          text: analysisText,
+          source_name: (opts?.sourceOverride ?? sourceName).trim() || "Unknown Source",
+          run_lime: opts?.runLimeOverride ?? runLime,
+          run_shap: opts?.runShapOverride ?? runShap,
+        });
+        setResult(data);
+        setShowResults(true);
+        setAnnounce(`Analysis complete. Final verdict: ${data.final_verdict}.`);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Unknown error";
+        setError("Cannot connect to backend on port 8000. Error: " + msg);
+        setAnnounce("Analysis failed. " + msg);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [text, sourceName, runLime, runShap]
+  );
+
+  // URL quick-lane (the navy pill): fetch an article link via the SAME
+  // scrapeUrl() the "Fetch from URL" button uses, fill the form state, then run
+  // the single analyse path with SHAP/LIME forced OFF (fast path). Invalid /
+  // non-URL input is not fetched — it shows an inline hint instead.
+  const handleQuickVerify = useCallback(
+    async (rawUrl: string) => {
+      const url = rawUrl.trim();
+      if (!url) {
+        setQuickError("Paste an article link to verify, or use the form below for plain text.");
+        return;
+      }
+      if (!/^https?:\/\/.+/i.test(url)) {
+        setQuickError(
+          "This box takes an article link (http:// or https://). To check plain text, paste it into the form below."
+        );
+        return;
+      }
+      setQuickError("");
+      setError("");
+      setSuccessMsg("");
+      setLoading(true);
+      setResult(null);
+      setAnnounce("Fetching the article, please wait.");
+      try {
+        const data = await scrapeUrl(url);
+        if (!data.text || data.text.trim().length < 20) {
+          setLoading(false);
+          setQuickError(
+            "Couldn't extract enough text from that link. Try the URL importer below, or paste the text manually."
+          );
+          setAnnounce("Fetch failed — not enough text extracted.");
+          return;
+        }
+        // Fill the form below so a Back from results shows a consistent, fully
+        // populated state (not half-filled).
+        setText(data.text);
+        const src = data.site_name && !sourceName ? data.site_name : sourceName;
+        if (data.site_name && !sourceName) setSourceName(data.site_name);
+        await handleAnalyse({
+          textOverride: data.text,
+          sourceOverride: src,
+          runLimeOverride: false, // fast path — explainability off regardless of the form checkboxes
+          runShapOverride: false,
+        });
+      } catch (err) {
+        setLoading(false);
+        const msg = err instanceof ApiError ? err.message : "Couldn't fetch that link.";
+        setQuickError(msg);
+        setAnnounce("Fetch failed. " + msg);
+      }
+    },
+    [sourceName, handleAnalyse]
+  );
 
   const handleClear = () => {
     setText("");
@@ -132,6 +195,7 @@ export default function AnalysePage() {
     setResult(null);
     setShowResults(false);
     setError("");
+    setQuickError("");
     setSuccessMsg("");
   };
 
@@ -188,9 +252,9 @@ export default function AnalysePage() {
           wordCount={wordCount}
           loading={loading}
           error={error}
+          quickError={quickError}
           successMsg={successMsg}
-          expanded={expanded}
-          setExpanded={setExpanded}
+          onQuickVerify={handleQuickVerify}
           onAnalyse={handleAnalyse}
           onClear={handleClear}
           onOpenUrl={() => setModal("url")}
@@ -200,7 +264,7 @@ export default function AnalysePage() {
         <div className="mt-10 grid gap-8 lg:grid-cols-[1fr_320px]">
           {/* Fact-check feed */}
           <section aria-labelledby="feed-heading">
-            <div className="flex flex-wrap items-end justify-between gap-2">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <h2
                   id="feed-heading"
@@ -218,36 +282,39 @@ export default function AnalysePage() {
                   from Google&rsquo;s ClaimReview corpus.
                 </p>
               </div>
-              <p className="text-xs text-muted-foreground">
-                Source: Google Fact Check Tools · ClaimReview
-              </p>
-            </div>
 
-            {!searching && (
-              <div
-                className="mt-4 inline-flex rounded-lg border border-border bg-card p-0.5 shadow-sm"
-                role="tablist"
-                aria-label="Fact-check region"
-              >
-                {(["malaysia", "foreign"] as const).map((r) => (
-                  <button
-                    key={r}
-                    type="button"
-                    role="tab"
-                    aria-selected={region === r}
-                    onClick={() => setRegion(r)}
-                    className={cn(
-                      "rounded-md px-4 py-1.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand",
-                      region === r
-                        ? "bg-primary text-primary-foreground"
-                        : "text-muted-foreground hover:text-foreground"
-                    )}
+              {/* Right side of the header band: region tabs above the attribution */}
+              <div className="flex shrink-0 flex-col gap-2 sm:items-end">
+                {!searching && (
+                  <div
+                    className="inline-flex rounded-lg border border-border bg-card p-0.5 shadow-sm"
+                    role="tablist"
+                    aria-label="Fact-check region"
                   >
-                    {r === "malaysia" ? "Malaysia" : "Foreign"}
-                  </button>
-                ))}
+                    {(["malaysia", "foreign"] as const).map((r) => (
+                      <button
+                        key={r}
+                        type="button"
+                        role="tab"
+                        aria-selected={region === r}
+                        onClick={() => setRegion(r)}
+                        className={cn(
+                          "rounded-md px-4 py-1.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand",
+                          region === r
+                            ? "bg-primary text-primary-foreground"
+                            : "text-muted-foreground hover:text-foreground"
+                        )}
+                      >
+                        {r === "malaysia" ? "Malaysia" : "Foreign"}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  Source: Google Fact Check Tools · ClaimReview
+                </p>
               </div>
-            )}
+            </div>
 
             <div className="mt-5">
               {feedError ? (
@@ -270,7 +337,8 @@ export default function AnalysePage() {
                 </div>
               ) : (
                 <div className="grid gap-4 sm:grid-cols-2">
-                  {feedItems.map((item, i) => (
+                  {/* hard cap: never render more than 8 cards per section */}
+                  {feedItems.slice(0, 8).map((item, i) => (
                     <FactCheckCard key={`${item.url}-${i}`} item={item} />
                   ))}
                 </div>
@@ -284,8 +352,6 @@ export default function AnalysePage() {
           </div>
         </div>
       </main>
-
-      <Footer />
 
       <UrlModal
         open={modal === "url"}

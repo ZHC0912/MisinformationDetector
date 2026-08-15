@@ -19,7 +19,6 @@ import {
 import type { SourceRatingItem } from "@/lib/types";
 import { getSources, ApiError } from "@/lib/api";
 import SourceRatingRow, { tierWidth } from "@/components/SourceRatingRow";
-import Footer from "@/components/Footer";
 import { cn } from "@/lib/utils";
 
 type SortKey = "tier" | "name";
@@ -286,8 +285,6 @@ export default function SourcesPage() {
           </div>
         )}
       </main>
-
-      <Footer />
     </>
   );
 }
