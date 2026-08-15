@@ -8,7 +8,11 @@ title, and site name from a given URL.
 =============================================================
 """
 
+import logging
+
 import trafilatura
+
+log = logging.getLogger(__name__)
 
 MAX_TEXT_LENGTH = 20000
 
@@ -60,5 +64,6 @@ def scrape_url(url: str) -> dict:
             "word_count": len(text.split()),
         }
 
-    except Exception as e:
-        return {**empty, "error": f"Scraping failed: {str(e)}"}
+    except Exception:
+        log.exception("Scraping failed for %s", url)
+        return {**empty, "error": "Could not fetch or read this URL. Please check the link and try again."}

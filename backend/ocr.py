@@ -24,6 +24,10 @@ from config import MAX_IMAGE_SIZE, ALLOWED_TYPES
 
 log = logging.getLogger(__name__)
 
+# Reject decompression bombs: a small file can decode to a huge pixel array.
+# Above this, Pillow raises DecompressionBombError instead of allocating.
+Image.MAX_IMAGE_PIXELS = 40_000_000   # ~40 megapixels
+
 _reader      = None  # lazy-init — loaded on first OCR request, not at startup
 _reader_lock = threading.Lock()
 
@@ -50,6 +54,13 @@ def extract_text(image_bytes: bytes, mime_type: str = "image/jpeg") -> dict:
     Times out after _OCR_TIMEOUT seconds to prevent runaway requests.
     """
     try:
+        # Validate the bytes really are an image (content_type from the client is
+        # spoofable), then reopen — verify() consumes the file object.
+        try:
+            Image.open(io.BytesIO(image_bytes)).verify()
+        except Exception:
+            return _error("The uploaded file is not a valid image.")
+
         img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
         img_array = np.array(img)
 
@@ -73,8 +84,9 @@ def extract_text(image_bytes: bytes, mime_type: str = "image/jpeg") -> dict:
         log.info("OCR: extracted %d words successfully.", len(text.split()))
         return {"extracted_text": text, "error": None}
 
-    except Exception as e:
-        return _error(f"OCR error: {str(e)}")
+    except Exception:
+        log.exception("OCR failed")
+        return _error("Could not read text from this image. Please try a different image.")
 
 
 def _error(msg: str) -> dict:

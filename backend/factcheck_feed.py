@@ -118,6 +118,7 @@ def _search_google(query: str, lang: str, max_age_days: int) -> list:
                 "ratingClass": _normalise_rating(rating),    # TRUE / FALSE / PARTIALLY TRUE / UNVERIFIABLE (for colour)
                 "reviewDate":  review.get("reviewDate") or "",
                 "url":         url,
+                "lang":        (review.get("languageCode") or "").lower(),  # review language (region signal)
             })
     return cards
 
@@ -133,11 +134,49 @@ def _dedupe(cards: list) -> list:
     return out
 
 
-def _is_malaysia(card: dict) -> bool:
-    """Heuristic: does this card relate to Malaysia? Used to keep the two regions
-    disjoint (excluded from the 'foreign' section)."""
-    blob = f"{card['claim']} {card['claimant']} {card['publisher']}".lower()
-    return "malaysia" in blob or "malaysian" in blob
+# ── Region classification (post-fetch verification) ─────────────
+# A `query="Malaysia"` claims:search is a RELEVANCE search, NOT a country filter,
+# so it returns loosely-related foreign claims too. After fetching we therefore
+# VERIFY each card actually has Malaysian evidence before it can enter the
+# Malaysia section (and we exclude any such card from Foreign).
+#
+# This is an APPROXIMATE keyword/heuristic allowlist, not a true country filter:
+#   POSITIVE if the claim / claimant / publisher text mentions Malaysia, a
+#   Malaysian state, institution, party, or well-known public figure; OR the
+#   publisher is a known Malaysian fact-checker; OR the review language is Malay.
+# Limits (state these honestly): Malay ("ms") is also spoken in Indonesia/Brunei/
+# Singapore, so language is a weak signal; a Malaysian claim in English that names
+# no listed entity is missed and dropped (we prefer dropping over leaking); the
+# term list is finite and hand-maintained. It cannot claim 100% precision/recall.
+_MY_TERMS = (
+    "malaysia", "malaysian",
+    # states / federal territories / cities
+    "kuala lumpur", "putrajaya", "labuan", "johor", "selangor", "penang",
+    "sabah", "sarawak", "perak", "kedah", "kelantan", "terengganu", "pahang",
+    "melaka", "malacca", "negeri sembilan", "perlis",
+    # institutions / economy / society
+    "ringgit", "bank negara", "dewan rakyat", "dewan negara", "bumiputera",
+    "petronas", "felda", "khazanah", "bernama", "agong",
+    # parties (distinctive names only — avoid ambiguous 3-letter acronyms)
+    "umno", "bersatu", "pakatan harapan", "barisan nasional", "perikatan nasional",
+    # public figures
+    "anwar ibrahim", "mahathir", "najib razak", "muhyiddin", "ismail sabri",
+    "zahid hamidi", "rafizi", "wan azizah", "tengku zafrul", "hishammuddin",
+)
+_MY_PUBLISHERS = ("semakan fakta", "sebenarnya", "mygov")
+
+
+def _is_malaysian(card: dict) -> bool:
+    """Approximate evidence-based check that a card is genuinely about Malaysia.
+    Used to gate the Malaysia section AND to exclude such cards from Foreign, so
+    the two sections never share a card. See notes above for its known limits."""
+    publisher = card.get("publisher", "").lower()
+    if any(p in publisher for p in _MY_PUBLISHERS):
+        return True
+    if card.get("lang") == "ms":                 # Malay-language review (weak signal)
+        return True
+    blob = f"{card.get('claim', '')} {card.get('claimant', '')} {publisher}".lower()
+    return any(term in blob for term in _MY_TERMS)
 
 
 def _finalise(cards: list) -> list:
@@ -193,8 +232,13 @@ def get_fact_checks(query: str = "", region: str = _DEFAULT_REGION, lang: str = 
     for q, qlang in REGION_QUERIES[region]:      # one Google call per (query, lang) pair
         cards.extend(_search_google(q, qlang, age))
 
-    if region == "foreign":
-        cards = [c for c in cards if not _is_malaysia(c)]
+    # Post-fetch region verification (the "Malaysia" query is relevance-based, not
+    # a country filter). Malaysia keeps ONLY cards with Malaysian evidence; Foreign
+    # excludes anything classified Malaysian → the two sections never share a card.
+    if region == "malaysia":
+        cards = [c for c in cards if _is_malaysian(c)]
+    elif region == "foreign":
+        cards = [c for c in cards if not _is_malaysian(c)]
 
     cards = _finalise(cards)
     _cache_put(key, cards)

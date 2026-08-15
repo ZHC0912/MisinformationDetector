@@ -57,4 +57,6 @@ class TestScrapeUrl:
         with patch("scraper.trafilatura.fetch_url", side_effect=Exception("network failure")):
             result = scrape_url("https://example.com/article")
         assert result["error"] is not None
-        assert "network failure" in result["error"]
+        # Raw exception detail must NOT leak to the client (info-disclosure hardening).
+        assert "network failure" not in result["error"]
+        assert result["text"] == ""

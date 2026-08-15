@@ -113,7 +113,8 @@ def fact_check_google(text: str) -> dict | None:
     try:
         response = requests.get(
             GFCT_URL,
-            params={"query": query, "key": GFCT_API_KEY, "languageCode": "en"},
+            params={"query": query, "languageCode": "en"},
+            headers={"x-goog-api-key": GFCT_API_KEY},   # key in header, not URL (avoids log leakage)
             timeout=10,
         )
 
@@ -188,5 +189,8 @@ def fact_check_google(text: str) -> dict | None:
         }
 
     except Exception as e:
-        log.error("[Google FC] Exception: %s", e)
+        # Defence in depth: scrub any Google API key that a library exception
+        # might echo (e.g. in a URL) before it reaches the log.
+        log.error("[Google FC] request failed: %s",
+                  re.sub(r"AIza[0-9A-Za-z_\-]{20,}", "AIza***", str(e)))
         return None
