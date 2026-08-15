@@ -35,6 +35,7 @@ log = logging.getLogger(__name__)
 _tokenizer = None
 _model     = None
 _label_map = {"0": "Reliable", "1": "Misleading"}
+_threshold = config.MISLEADING_THRESHOLD   # may be overridden by decision_threshold.json
 MODEL_PATH = "./model"
 
 _model_lock = threading.Lock()   # guards _tokenizer / _model during lazy-init
@@ -65,7 +66,7 @@ CREDIBLE_WORDS = [
 
 def load_model() -> bool:
     """Load DistilBERT model from disk. Returns True if successful."""
-    global _tokenizer, _model, _label_map, torch, DistilBertTokenizerFast, DistilBertForSequenceClassification
+    global _tokenizer, _model, _label_map, _threshold, torch, DistilBertTokenizerFast, DistilBertForSequenceClassification
 
     if not os.path.exists(MODEL_PATH):
         log.warning("No model found at %s. Using heuristic mode.", MODEL_PATH)
@@ -93,8 +94,28 @@ def load_model() -> bool:
             with open(label_map_path) as f:
                 _label_map = json.load(f)
 
+        # Tuned decision threshold, saved by 03_train_liar_stage2.py
+        # (macro-F1-maximising cutoff found on LIAR valid). Falls back to
+        # config.MISLEADING_THRESHOLD when the file is absent.
+        threshold_path = os.path.join(MODEL_PATH, "decision_threshold.json")
+        if os.path.exists(threshold_path):
+            try:
+                with open(threshold_path) as f:
+                    _threshold = float(json.load(f)["threshold"])
+                log.info("Loaded tuned decision threshold: %.2f", _threshold)
+            except (json.JSONDecodeError, KeyError, TypeError, ValueError) as e:
+                log.warning("Could not read %s (%s) — using default %.2f",
+                            threshold_path, e, config.MISLEADING_THRESHOLD)
+                _threshold = config.MISLEADING_THRESHOLD
+
     log.info("DistilBERT model loaded successfully.")
     return True
+
+
+def get_threshold() -> float:
+    """P(misleading) cutoff for the 'Misleading' verdict — tuned value if
+    the deployed model ships a decision_threshold.json, else the config default."""
+    return _threshold
 
 
 def is_model_loaded() -> bool:
@@ -165,7 +186,7 @@ def predict(text: str) -> dict:
                 "text":            chunk,
                 "misleading_prob": round(r["misleading_prob"], 4),
                 "reliable_prob":   round(r["reliable_prob"],   4),
-                "verdict":         "Misleading" if r["misleading_prob"] >= config.MISLEADING_THRESHOLD else "Reliable",
+                "verdict":         "Misleading" if r["misleading_prob"] >= get_threshold() else "Reliable",
             }
             for chunk, r in zip(chunks, results)
         ]
@@ -466,7 +487,7 @@ def analyse(text: str) -> dict:
     prediction        = predict(text)
     misleading_prob   = prediction["misleading_prob"]
     reliable_prob     = prediction["reliable_prob"]
-    verdict           = "Misleading" if misleading_prob >= config.MISLEADING_THRESHOLD else "Reliable"
+    verdict           = "Misleading" if misleading_prob >= get_threshold() else "Reliable"
     confidence        = round(max(misleading_prob, reliable_prob), 4)
     credibility_score = int(reliable_prob * 100)
     features          = extract_features(text, misleading_prob)

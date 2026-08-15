@@ -16,10 +16,36 @@ Runs the DistilBERT model against the LIAR benchmark test set
 
 import json
 import os
+import time
 import numpy as np
 import textanalysis
 
-_DATA_PATH = os.path.join(os.path.dirname(__file__), "eval_data.json")
+_DATA_PATH   = os.path.join(os.path.dirname(__file__), "eval_data.json")
+# Persisted latest evaluation result — same JSON-artifact pattern as
+# test_metrics.json / stage2_metrics.json. Read instantly by GET /evaluate;
+# overwritten by POST /evaluate/rerun and by running this script directly.
+_RESULT_PATH = os.path.join(os.path.dirname(__file__), "liar_test_metrics.json")
+
+
+def save_result(result: dict) -> dict:
+    """Persist the latest evaluation result to disk (overwrites any prior run).
+    Returns the payload actually written (with a generated_at timestamp added)."""
+    payload = {**result, "generated_at": time.time()}
+    with open(_RESULT_PATH, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2)
+    return payload
+
+
+def load_saved_result() -> dict | None:
+    """Return the last persisted evaluation result, or None if none exists yet
+    (fresh clone / never run) or the file is unreadable."""
+    if not os.path.exists(_RESULT_PATH):
+        return None
+    try:
+        with open(_RESULT_PATH, encoding="utf-8") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return None
 
 
 def _load_test_set() -> list:
@@ -51,7 +77,10 @@ def run_evaluation() -> dict:
         textanalysis.predict(t)["misleading_prob"] for t in texts
     ])
 
-    pred_labels = (probs_misleading >= 0.5).astype(int)
+    # Same cutoff the app uses: the tuned threshold shipped with the model
+    # (decision_threshold.json, tuned on LIAR valid), else 0.5.
+    threshold   = textanalysis.get_threshold()
+    pred_labels = (probs_misleading >= threshold).astype(int)
 
     # ── Confusion matrix ───────────────────────────────────
     tp = int(np.sum((pred_labels == 1) & (true_labels == 1)))  # correctly predicted misleading
@@ -126,7 +155,7 @@ def run_evaluation() -> dict:
         },
         "total_samples": len(test_set),
         "model_mode":    "AI model" if textanalysis.is_model_loaded() else "heuristic",
-        "threshold":     0.5,
+        "threshold":     threshold,
     }
 
 
@@ -164,3 +193,7 @@ if __name__ == "__main__":
         p = pc[cls]
         print(f"  {cls.capitalize():<12} {p['precision']*100:>9.1f}% {p['recall']*100:>7.1f}% {p['f1']*100:>7.1f}% {p['support']:>9}")
     print("=" * 48)
+
+    # Persist so the artifact is committable and the dashboard can load it instantly.
+    save_result(r)
+    print(f"\nSaved evaluation result -> {_RESULT_PATH}")
