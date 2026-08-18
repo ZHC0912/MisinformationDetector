@@ -9,38 +9,86 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Loader2, Play, RefreshCw, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { cn } from "@/lib/utils";
+import { useRevealOnScroll, revealClass } from "@/hooks/useRevealOnScroll";
 import { getEvaluation, rerunEvaluation, ApiError } from "@/lib/api";
 import type { EvaluationResult, RocPoint } from "@/lib/types";
+
+// Fine-grain noise texture — same treatment as the /app hero + results band.
+const GRAIN =
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E";
+
+// ── Reveal-on-scroll card (presentation only) ─────────────────
+// Same treatment as /app FactCheckCard and the ResultsPage cards: matched
+// radius, soft shadow, reveal-on-scroll with a subtle per-card stagger, hover
+// lift. Reuses the shared hook; static under prefers-reduced-motion. Replaces
+// the shadcn Card wrapper used before (purely visual — no behaviour changes).
+function RevealCard({
+  index = 0,
+  className,
+  children,
+  ...rest
+}: {
+  index?: number;
+  className?: string;
+  children: React.ReactNode;
+} & React.HTMLAttributes<HTMLElement>) {
+  const { ref, visible } = useRevealOnScroll<HTMLElement>();
+  return (
+    <section
+      ref={ref}
+      style={{ transitionDelay: visible ? `${Math.min(index, 7) * 60}ms` : "0ms" }}
+      className={cn(
+        "rounded-3xl border bg-card text-card-foreground shadow-card transition-all hover:-translate-y-0.5 hover:shadow-card-hover motion-reduce:transition-none",
+        revealClass(visible),
+        className
+      )}
+      {...rest}
+    >
+      {children}
+    </section>
+  );
+}
 
 // ── Metric card ───────────────────────────────────────────────
 function MetricCard({
   label,
   value,
   subtitle,
-  highlight,
+  size = "sm",
+  className,
+  index = 0,
 }: {
   label: string;
   value: number;
   subtitle: string;
-  highlight?: boolean;
+  size?: "sm" | "lg";
+  className?: string;
+  index?: number;
 }) {
+  const big = size === "lg";
   return (
-    <Card className="p-4">
+    <RevealCard
+      className={cn("flex flex-col justify-center p-4", big && "sm:p-6", className)}
+      index={index}
+    >
+      {/* small orange accent so the metrics aren't plain white boxes */}
+      <div className={cn("mb-3 h-1 rounded-full bg-brand/80", big ? "w-10" : "w-8")} />
       <div
         className={cn(
-          "text-2xl font-bold tabular-nums",
-          highlight ? "text-primary" : "text-foreground"
+          "font-bold tabular-nums text-foreground",
+          big ? "text-4xl sm:text-5xl" : "text-2xl"
         )}
       >
         {(value * 100).toFixed(1)}%
       </div>
-      <div className="mt-0.5 text-sm font-medium">{label}</div>
+      <div className={cn("mt-1 font-semibold", big ? "text-base" : "text-sm")}>
+        {label}
+      </div>
       <div className="text-xs text-muted-foreground">{subtitle}</div>
-    </Card>
+    </RevealCard>
   );
 }
 
@@ -62,7 +110,7 @@ function ConfusionMatrix({
   }) => (
     <div
       className={cn(
-        "rounded-md border p-3 text-center",
+        "rounded-md border p-2 text-center",
         good ? "bg-success-muted" : "bg-destructive-muted"
       )}
     >
@@ -76,9 +124,14 @@ function ConfusionMatrix({
     </div>
   );
   return (
-    <Card className="p-4">
-      <div className="mb-3 text-sm font-semibold">Confusion Matrix</div>
-      <div className="grid grid-cols-[auto_1fr_1fr] gap-2 text-xs">
+    <RevealCard className="flex flex-col p-4" index={0}>
+      <div className="mb-3 font-display text-lg font-bold tracking-tight">
+        Confusion Matrix
+      </div>
+      {/* centre the grid vertically so any equal-height leftover becomes
+          breathing room around a compact matrix, not taller cells */}
+      <div className="flex flex-1 items-center">
+        <div className="grid w-full grid-cols-[auto_1fr_1fr] gap-2 text-xs">
         <div />
         <div className="text-center font-medium text-muted-foreground">
           Pred. Reliable
@@ -98,8 +151,9 @@ function ConfusionMatrix({
         </div>
         <Cell n={cm.fn} label="False Neg." good={false} />
         <Cell n={cm.tp} label="True Pos." good />
+        </div>
       </div>
-    </Card>
+    </RevealCard>
   );
 }
 
@@ -114,8 +168,10 @@ function ClassReport({
     { name: "Misleading", cls: perClass.misleading, tone: "bg-destructive" },
   ];
   return (
-    <Card className="p-4">
-      <div className="mb-3 text-sm font-semibold">Classification Report</div>
+    <RevealCard className="p-4" index={0}>
+      <div className="mb-3 font-display text-lg font-bold tracking-tight">
+        Classification Report
+      </div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
@@ -161,7 +217,7 @@ function ClassReport({
         <br />
         F1 = harmonic mean of precision and recall.
       </div>
-    </Card>
+    </RevealCard>
   );
 }
 
@@ -181,16 +237,21 @@ function RocCurve({ points, auc }: { points: RocPoint[]; auc: number }) {
   const ticks = [0, 0.25, 0.5, 0.75, 1.0];
 
   return (
-    <Card className="p-4">
-      <div className="mb-3 text-sm font-semibold">
+    <RevealCard className="p-4" index={1}>
+      <div className="mb-3 font-display text-lg font-bold tracking-tight">
         ROC Curve — AUC = {auc.toFixed(3)}
       </div>
-      <svg
-        viewBox={`0 0 ${W} ${H}`}
-        className="w-full"
-        role="img"
-        aria-label={`ROC curve, area under curve ${auc.toFixed(3)}`}
-      >
+      {/* Chart + explanation side by side (on lg+) so the paragraph no longer
+          stacks UNDER the chart and inflates this card's height. max-w keeps the
+          SVG — and its in-SVG label text, which scales with it — roughly square
+          and ~225px tall, so this card lands close to the compact matrix card. */}
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
+        <svg
+          viewBox={`0 0 ${W} ${H}`}
+          className="h-auto w-full max-w-[280px] shrink-0"
+          role="img"
+          aria-label={`ROC curve, area under curve ${auc.toFixed(3)}`}
+        >
         {ticks.map((t) => (
           <g key={t}>
             <line
@@ -286,14 +347,15 @@ function RocCurve({ points, auc }: { points: RocPoint[]; auc: number }) {
         >
           True Positive Rate
         </text>
-      </svg>
-      <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-        The ROC curve shows the trade-off between True Positive Rate
-        (sensitivity) and False Positive Rate at every decision threshold. AUC =
-        1.0 is a perfect classifier; AUC = 0.5 is random. The dashed line
-        represents a random baseline.
-      </p>
-    </Card>
+        </svg>
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          The ROC curve shows the trade-off between True Positive Rate
+          (sensitivity) and False Positive Rate at every decision threshold. AUC
+          = 1.0 is a perfect classifier; AUC = 0.5 is random. The dashed line
+          represents a random baseline.
+        </p>
+      </div>
+    </RevealCard>
   );
 }
 
@@ -312,8 +374,8 @@ function Interpretation({ data }: { data: EvaluationResult }) {
             ? "weak"
             : "near-random";
   return (
-    <Card className="p-4">
-      <div className="mb-3 text-sm font-semibold">
+    <RevealCard className="p-4" index={1}>
+      <div className="mb-3 font-display text-lg font-bold tracking-tight">
         How to Read These Results
       </div>
       <ul className="space-y-2 text-sm text-muted-foreground">
@@ -346,7 +408,7 @@ function Interpretation({ data }: { data: EvaluationResult }) {
           misleading; tuned on the LIAR validation split.
         </li>
       </ul>
-    </Card>
+    </RevealCard>
   );
 }
 
@@ -395,41 +457,87 @@ export default function EvaluationPage() {
     : null;
 
   return (
-    <main className="mx-auto w-full max-w-5xl space-y-5 px-4 py-8">
-        {/* Header */}
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-lg font-semibold">Model Evaluation Dashboard</h2>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={rerunEval}
-              disabled={loading || initialLoading}
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="animate-spin" /> Running…
-                </>
-              ) : (
-                <>
-                  <RefreshCw /> Re-run Evaluation
-                </>
+    <main className="w-full space-y-6 px-6 py-8 sm:px-8 sm:py-10">
+        {/* MIDAS header band — dark navy with the same glow + grain recipe as
+            the /app hero and the results verdict band. Title, LIAR description
+            and the model-mode/threshold/last-run line live here; Re-run + Back
+            sit top-right inside it. Everything below stays on the light bg. */}
+        <section className="relative overflow-hidden rounded-3xl bg-surface px-6 py-8 text-surface-foreground shadow-card sm:px-10 sm:py-9">
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0"
+            style={{
+              background:
+                "radial-gradient(120% 120% at 12% -10%, rgba(249,115,22,0.18), rgba(249,115,22,0) 55%), radial-gradient(90% 90% at 108% 120%, rgba(249,115,22,0.10), rgba(249,115,22,0) 60%)",
+            }}
+          />
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0"
+            style={{
+              opacity: 0.1,
+              mixBlendMode: "overlay",
+              backgroundSize: "180px 180px",
+              backgroundImage: `url("${GRAIN}")`,
+            }}
+          />
+          <div className="relative z-10 flex flex-wrap items-start justify-between gap-4">
+            <div className="max-w-3xl">
+              <span className="text-xs font-bold uppercase tracking-[0.2em] text-brand">
+                Model evaluation
+              </span>
+              <h1 className="mt-2 font-display text-2xl font-extrabold leading-tight tracking-tight sm:text-3xl">
+                Model Evaluation Dashboard
+              </h1>
+              <p className="mt-3 text-sm leading-relaxed text-surface-foreground/70">
+                Evaluates the DistilBERT NLP classifier against the{" "}
+                <strong className="text-surface-foreground">LIAR benchmark</strong>{" "}
+                test split —{" "}
+                <strong className="text-surface-foreground">
+                  896 fact-checked political statements
+                </strong>{" "}
+                (448 Reliable, 448 Misleading) from PolitiFact (Wang, 2017).
+                Computes standard binary classification metrics.
+              </p>
+              {data && (
+                <div className="mt-4 flex flex-wrap items-center gap-2">
+                  <Badge variant="secondary">Model mode: {data.model_mode}</Badge>
+                  <span className="text-xs text-surface-foreground/60">
+                    {data.total_samples} samples · threshold = {data.threshold}
+                    {lastRun && <> · last run {lastRun}</>}
+                  </span>
+                </div>
               )}
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => navigate("/app")}>
-              <ArrowLeft /> Back
-            </Button>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={rerunEval}
+                disabled={loading || initialLoading}
+                className="border-white/20 bg-white/5 text-surface-foreground hover:bg-white/10 hover:text-white"
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="animate-spin" /> Running…
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw /> Re-run Evaluation
+                  </>
+                )}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => navigate("/app")}
+                className="border-white/20 bg-white/5 text-surface-foreground hover:bg-white/10 hover:text-white"
+              >
+                <ArrowLeft /> Back
+              </Button>
+            </div>
           </div>
-        </div>
-
-        <p className="text-sm text-muted-foreground">
-          Evaluates the DistilBERT NLP classifier against the{" "}
-          <strong className="text-foreground">LIAR benchmark</strong> test split
-          — <strong className="text-foreground">896 fact-checked political
-          statements</strong>{" "}
-          (448 Reliable, 448 Misleading) from PolitiFact (Wang, 2017). Computes
-          standard binary classification metrics.
-        </p>
+        </section>
 
         {error && (
           <Alert variant="destructive">
@@ -470,36 +578,47 @@ export default function EvaluationPage() {
         {/* Results */}
         {data && (
           <>
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="secondary">Model mode: {data.model_mode}</Badge>
-              <span className="text-xs text-muted-foreground">
-                {data.total_samples} samples · threshold = {data.threshold}
-                {lastRun && <> · last run {lastRun}</>}
-              </span>
+            {/* Primary metrics — larger, emphasised */}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <MetricCard label="Accuracy" value={data.accuracy} subtitle="Overall correct" size="lg" index={0} />
+              <MetricCard label="AUC-ROC" value={data.roc_auc} subtitle="Area under ROC curve" size="lg" index={1} />
             </div>
 
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-              <MetricCard label="Accuracy" value={data.accuracy} subtitle="Overall correct" />
-              <MetricCard label="Macro F1" value={data.macro_f1} subtitle="Harmonic mean" highlight />
-              <MetricCard label="Macro Prec." value={data.macro_precision} subtitle="Avg. precision" />
-              <MetricCard label="Macro Recall" value={data.macro_recall} subtitle="Avg. recall" />
-              <MetricCard label="AUC-ROC" value={data.roc_auc} subtitle="Area under curve" />
+            {/* Secondary metrics */}
+            <div className="grid grid-cols-3 gap-4">
+              <MetricCard label="Macro F1" value={data.macro_f1} subtitle="Harmonic mean" index={0} />
+              <MetricCard label="Macro Precision" value={data.macro_precision} subtitle="Avg. precision" index={1} />
+              <MetricCard label="Macro Recall" value={data.macro_recall} subtitle="Avg. recall" index={2} />
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
+            {/* Why four of the five metrics read almost the same value */}
+            <p className="max-w-3xl text-xs leading-relaxed text-muted-foreground">
+              On a perfectly balanced test set (448 Reliable / 448 Misleading),
+              accuracy, macro-precision, macro-recall and macro-F1 all converge to
+              nearly the same value — this closeness is expected on a balanced
+              binary split, not a display error.
+            </p>
+
+            {/* Confusion matrix + ROC — the ROC chart is sized so the two cards
+                are naturally close in height, then equal-height (stretch) lands
+                them on the same line. Two columns only from lg (where the ROC
+                chart + paragraph sit side by side); they stack below that. */}
+            <div className="grid gap-5 lg:grid-cols-2">
               <ConfusionMatrix cm={data.confusion_matrix} />
               <RocCurve points={data.roc_curve} auc={data.roc_auc} />
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
+            {/* Classification report + interpretation — equal height (default
+                grid stretch) so both cards end on the same line. */}
+            <div className="grid gap-5 md:grid-cols-2">
               <ClassReport perClass={data.per_class} />
               <Interpretation data={data} />
             </div>
           </>
         )}
 
-        {/* Methodology */}
-        <div className="rounded-md border bg-muted/30 p-4 text-xs leading-relaxed text-muted-foreground">
+        {/* Methodology — full width so the lower section fills evenly */}
+        <div className="rounded-2xl border bg-muted/30 p-4 text-xs leading-relaxed text-muted-foreground">
           <strong className="text-foreground">Methodology:</strong> The model is
           evaluated using the LIAR benchmark test split (Wang, 2017) — 896 short
           political claims from PolitiFact, balanced at 448 per class. Label
