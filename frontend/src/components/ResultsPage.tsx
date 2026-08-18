@@ -37,6 +37,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { cn } from "@/lib/utils";
+import { useRevealOnScroll, revealClass } from "@/hooks/useRevealOnScroll";
 import { factCheckAi, ApiError } from "@/lib/api";
 import type {
   AnalyseResult,
@@ -58,6 +59,11 @@ interface Props {
 // Paragraphs at or above this misleading probability are auto-expanded and
 // flagged; the criterion is surfaced on screen so the rule is explicit.
 const FLAG_THRESHOLD = 0.5;
+
+// Fine-grain noise texture — the same treatment applied to the /app dark
+// surfaces (HeroVerify band, ReliabilityCard). Data-URI, no asset dependency.
+const GRAIN =
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E";
 
 // Shared verdict styling (icon + tones). One source of truth for band + chip.
 const VERDICT_META: Record<
@@ -160,7 +166,7 @@ function ParagraphAnalysis({ chunks }: { chunks: Chunk[] }) {
   return (
     <section aria-label="Paragraph-level analysis">
       <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
-        <h3 className="text-sm font-semibold">Paragraph-level analysis</h3>
+        <h3 className="font-display text-lg font-bold tracking-tight">Paragraph-level analysis</h3>
         <span className="text-xs font-medium text-muted-foreground">
           {flaggedIdx.length} of {chunks.length} paragraph
           {chunks.length === 1 ? "" : "s"} flagged (≥{" "}
@@ -413,10 +419,31 @@ function VerdictBand({
   const { Icon, accent } = verdictMeta(verdict);
   return (
     <section
-      className="rounded-3xl bg-surface px-6 py-7 text-surface-foreground shadow-card sm:px-10 sm:py-9"
+      className="relative overflow-hidden rounded-3xl bg-surface px-6 py-9 text-surface-foreground shadow-card sm:px-10 sm:py-11"
       aria-label={`Final verdict: ${verdict}`}
     >
-      <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
+      {/* Atmosphere — soft orange glow + fine grain, same recipe as the /app
+          hero band. Layers sit BEHIND the z-10 content, so the verdict word and
+          score ring keep full contrast. */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0"
+        style={{
+          background:
+            "radial-gradient(120% 120% at 12% -10%, rgba(249,115,22,0.18), rgba(249,115,22,0) 55%), radial-gradient(90% 90% at 108% 120%, rgba(249,115,22,0.10), rgba(249,115,22,0) 60%)",
+        }}
+      />
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0"
+        style={{
+          opacity: 0.1,
+          mixBlendMode: "overlay",
+          backgroundSize: "180px 180px",
+          backgroundImage: `url("${GRAIN}")`,
+        }}
+      />
+      <div className="relative z-10 flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
         <div className="max-w-2xl">
           <span className="text-xs font-bold uppercase tracking-[0.2em] text-brand">
             Credibility analysis report
@@ -432,7 +459,7 @@ function VerdictBand({
             </span>
             <h1
               className={cn(
-                "font-display text-3xl font-extrabold leading-none tracking-tight sm:text-4xl",
+                "font-display text-4xl font-extrabold leading-none tracking-[-0.02em] sm:text-5xl",
                 accent
               )}
             >
@@ -581,6 +608,37 @@ function Disclaimer() {
   );
 }
 
+// ── Reveal-on-scroll report card (presentation only) ──────────
+// Light report card that reveals as it scrolls in (shared hook) with a subtle
+// per-card stagger + hover lift — the same treatment as /app FactCheckCard.
+// Dark-band glow/grain is NOT used here: light reading cards stay clean.
+function RevealCard({
+  index = 0,
+  className,
+  children,
+  ...rest
+}: {
+  index?: number;
+  className?: string;
+  children: React.ReactNode;
+} & React.HTMLAttributes<HTMLElement>) {
+  const { ref, visible } = useRevealOnScroll<HTMLElement>();
+  return (
+    <section
+      ref={ref}
+      style={{ transitionDelay: visible ? `${Math.min(index, 7) * 60}ms` : "0ms" }}
+      className={cn(
+        "rounded-3xl border bg-card p-5 shadow-card transition-all hover:-translate-y-0.5 hover:shadow-card-hover motion-reduce:transition-none",
+        revealClass(visible),
+        className
+      )}
+      {...rest}
+    >
+      {children}
+    </section>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────
 export default function ResultsPage({
   result,
@@ -637,7 +695,7 @@ export default function ResultsPage({
           : "Google Fact Check API (no match)";
 
   return (
-    <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 sm:py-8">
+    <main className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 sm:py-12">
       {/* Navy verdict band — full weight verdict + score */}
       <VerdictBand
         verdict={finalVerdict}
@@ -658,12 +716,12 @@ export default function ResultsPage({
       )}
 
       {/* Main + sticky rail */}
-      <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_340px] lg:items-start">
+      <div className="mt-8 grid gap-6 sm:mt-10 lg:grid-cols-[1fr_340px] lg:items-start">
         {/* ── MAIN column ── */}
         <div className="min-w-0 space-y-6">
           {/* NLP qualitative detail */}
-          <section className="rounded-2xl border bg-card p-5 shadow-card" aria-label="NLP style analysis">
-            <div className="mb-3 flex items-center gap-1.5 text-sm font-semibold">
+          <RevealCard index={0} aria-label="NLP style analysis">
+            <div className="mb-3 flex items-center gap-2 font-display text-lg font-bold tracking-tight">
               <Search className="h-4 w-4" /> NLP style analysis
             </div>
             {(result.key_features?.length ?? 0) > 0 && (
@@ -685,11 +743,11 @@ export default function ResultsPage({
               </div>
             )}
             <p className="text-sm text-muted-foreground">{result.style_explanation}</p>
-          </section>
+          </RevealCard>
 
           {/* Fact-check DETAIL (heavy parts live here, not in the rail) */}
-          <section className="rounded-2xl border bg-card p-5 shadow-card" aria-label="Fact-check detail">
-            <div className="mb-3 flex items-center gap-1.5 text-sm font-semibold">
+          <RevealCard index={1} aria-label="Fact-check detail">
+            <div className="mb-3 flex items-center gap-2 font-display text-lg font-bold tracking-tight">
               <Check className="h-4 w-4" /> Fact-check detail
             </div>
 
@@ -820,20 +878,20 @@ export default function ResultsPage({
                 <p className="text-sm text-muted-foreground">{displayFc.explanation}</p>
               </div>
             )}
-          </section>
+          </RevealCard>
 
           {/* Summary-first paragraph strip */}
           {hasChunks && (
-            <div className="rounded-2xl border bg-card p-5 shadow-card">
+            <RevealCard index={2}>
               <ParagraphAnalysis chunks={result.chunks!} />
-            </div>
+            </RevealCard>
           )}
 
           {/* LIME word influence */}
           {submittedText && (limeRequested || hasLime) && (
-            <section className="rounded-2xl border bg-card p-5 shadow-card" aria-label="Explainability — LIME">
+            <RevealCard index={3} aria-label="Explainability — LIME">
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                <h3 className="text-sm font-semibold">Word influence — LIME</h3>
+                <h3 className="font-display text-lg font-bold tracking-tight">Word influence — LIME</h3>
                 {hasLime && <InfluenceLegend />}
               </div>
               <p className="mb-3 text-sm text-muted-foreground">
@@ -855,14 +913,14 @@ export default function ResultsPage({
                   onToggle={() => setShowLimeChart((v) => !v)}
                 />
               )}
-            </section>
+            </RevealCard>
           )}
 
           {/* SHAP word influence */}
           {submittedText && (shapRequested || hasShap) && (
-            <section className="rounded-2xl border bg-card p-5 shadow-card" aria-label="Explainability — SHAP">
+            <RevealCard index={4} aria-label="Explainability — SHAP">
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                <h3 className="text-sm font-semibold">Word influence — SHAP</h3>
+                <h3 className="font-display text-lg font-bold tracking-tight">Word influence — SHAP</h3>
                 {hasShap && <InfluenceLegend />}
               </div>
               <p className="mb-3 text-sm text-muted-foreground">
@@ -884,7 +942,7 @@ export default function ResultsPage({
                   onToggle={() => setShowShapChart((v) => !v)}
                 />
               )}
-            </section>
+            </RevealCard>
           )}
 
           {/* Report meta (stays with the main-column content) */}
@@ -896,7 +954,7 @@ export default function ResultsPage({
 
         {/* ── LEAN sticky rail — stays visible while scrolling ── */}
         <aside className="lg:sticky lg:top-20 lg:self-start lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto">
-          <div className="space-y-4 rounded-2xl border bg-card p-5 shadow-card">
+          <div className="space-y-4 rounded-3xl border bg-card p-5 shadow-card">
             {/* Compact verdict chip + score (NOT a second verdict block) */}
             <div className="flex items-center justify-between gap-2">
               <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -956,10 +1014,10 @@ export default function ResultsPage({
 
       {/* End of report → full-width divider + primary action, BELOW both
           columns (main and rail), so it never staggers beside the taller one. */}
-      <div className="mt-8 border-t pt-6">
+      <div className="mt-12 border-t pt-8 sm:mt-14">
         <Button
           onClick={onBack}
-          className="bg-brand text-brand-foreground hover:bg-brand-hover"
+          className="bg-brand text-brand-foreground transition-shadow hover:bg-brand-hover hover:shadow-[0_12px_34px_-10px_rgba(249,115,22,0.55)]"
         >
           <ArrowLeft /> Analyse another
         </Button>

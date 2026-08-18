@@ -239,7 +239,7 @@ export default function AnalysePage() {
         {announce}
       </div>
 
-      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8">
+      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-12">
         <HeroVerify
           text={text}
           setText={setText}
@@ -261,7 +261,7 @@ export default function AnalysePage() {
           onOpenOcr={() => setModal("ocr")}
         />
 
-        <div className="mt-10 grid gap-8 lg:grid-cols-[1fr_320px]">
+        <div className="mt-14 grid gap-8 sm:mt-16 lg:grid-cols-[1fr_320px]">
           {/* Fact-check feed */}
           <section aria-labelledby="feed-heading">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -272,7 +272,7 @@ export default function AnalysePage() {
                 >
                   Recently fact-checked
                 </h2>
-                <p className="mt-1 font-display text-xl font-bold tracking-tight text-foreground">
+                <p className="mt-1 font-display text-2xl font-extrabold tracking-tight text-foreground sm:text-3xl">
                   {feedQuery
                     ? `Results for “${feedQuery}”`
                     : "Attributed claims by public figures"}
@@ -339,7 +339,7 @@ export default function AnalysePage() {
                 <div className="grid gap-4 sm:grid-cols-2">
                   {/* hard cap: never render more than 8 cards per section */}
                   {feedItems.slice(0, 8).map((item, i) => (
-                    <FactCheckCard key={`${item.url}-${i}`} item={item} />
+                    <FactCheckCard key={`${item.url}-${i}`} item={item} index={i} />
                   ))}
                 </div>
               )}

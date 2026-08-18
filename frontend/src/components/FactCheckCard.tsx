@@ -7,6 +7,8 @@
 import { ArrowUpRight } from "lucide-react";
 import type { FactCheckItem } from "@/lib/types";
 import VerdictChip from "@/components/VerdictChip";
+import { cn } from "@/lib/utils";
+import { useRevealOnScroll, revealClass } from "@/hooks/useRevealOnScroll";
 
 function formatDate(iso: string): string {
   if (!iso) return "";
@@ -19,11 +21,26 @@ function formatDate(iso: string): string {
   });
 }
 
-export default function FactCheckCard({ item }: { item: FactCheckItem }) {
+export default function FactCheckCard({
+  item,
+  index = 0,
+}: {
+  item: FactCheckItem;
+  index?: number;
+}) {
   const date = formatDate(item.reviewDate);
+  // Presentation-only reveal-on-scroll with a subtle per-card stagger.
+  const { ref, visible } = useRevealOnScroll<HTMLElement>();
 
   return (
-    <article className="flex min-h-[240px] flex-col rounded-2xl border border-border bg-card p-5 shadow-card transition-shadow hover:shadow-card-hover">
+    <article
+      ref={ref}
+      style={{ transitionDelay: visible ? `${Math.min(index, 7) * 60}ms` : "0ms" }}
+      className={cn(
+        "flex min-h-[240px] flex-col rounded-3xl border border-border bg-card p-5 shadow-card transition-all hover:-translate-y-0.5 hover:shadow-card-hover motion-reduce:transition-none",
+        revealClass(visible)
+      )}
+    >
       <div className="flex items-center justify-between gap-2">
         <span className="truncate text-xs font-bold uppercase tracking-wider text-brand">
           {item.publisher || "Fact-checker"}

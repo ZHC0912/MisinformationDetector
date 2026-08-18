@@ -32,6 +32,12 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { cn } from "@/lib/utils";
+import { useRevealOnScroll, revealClass } from "@/hooks/useRevealOnScroll";
+
+// Fine-grain noise texture — the same treatment the landing page uses on its
+// dark atmosphere. Kept as a data-URI so there's no asset dependency.
+const GRAIN =
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E";
 
 export interface HeroVerifyProps {
   text: string;
@@ -86,6 +92,11 @@ export default function HeroVerify(props: HeroVerifyProps) {
   // The pill's own state — a URL, kept separate from the analysed `text`.
   const [urlInput, setUrlInput] = useState("");
 
+  // Presentation-only: staggered entrance for the hero (reuses the landing's
+  // reveal hook; reveals instantly under prefers-reduced-motion).
+  const { ref: heroRef, visible } = useRevealOnScroll<HTMLDivElement>();
+  const rise = (ms: number) => ({ transitionDelay: visible ? `${ms}ms` : "0ms" });
+
   const submitQuick = (e: React.FormEvent) => {
     e.preventDefault();
     onQuickVerify(urlInput);
@@ -99,21 +110,64 @@ export default function HeroVerify(props: HeroVerifyProps) {
   return (
     <>
       {/* ── Compact, CENTRED hero band with the URL quick-lane ── */}
-      <section className="rounded-3xl bg-surface px-6 py-8 text-surface-foreground shadow-card sm:px-10 sm:py-10">
-        <div className="mx-auto max-w-3xl text-center">
-          <span className="text-xs font-bold uppercase tracking-[0.2em] text-brand">
+      <section className="relative overflow-hidden rounded-3xl bg-surface px-6 py-10 text-surface-foreground shadow-card sm:px-10 sm:py-14">
+        {/* Atmosphere — soft orange glow + fine grain, lifted from the landing.
+            Low opacity so text contrast on the navy is unaffected. */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0"
+          style={{
+            background:
+              "radial-gradient(120% 120% at 12% -10%, rgba(249,115,22,0.18), rgba(249,115,22,0) 55%), radial-gradient(90% 90% at 108% 120%, rgba(249,115,22,0.10), rgba(249,115,22,0) 60%)",
+          }}
+        />
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0"
+          style={{
+            opacity: 0.1,
+            mixBlendMode: "overlay",
+            backgroundSize: "180px 180px",
+            backgroundImage: `url("${GRAIN}")`,
+          }}
+        />
+
+        <div ref={heroRef} className="relative z-10 mx-auto max-w-3xl text-center">
+          <span
+            className={cn(
+              "inline-block text-xs font-bold uppercase tracking-[0.2em] text-brand",
+              revealClass(visible)
+            )}
+            style={rise(0)}
+          >
             AI credibility engine
           </span>
-          <h1 className="mt-3 font-display text-3xl font-extrabold leading-[1.1] tracking-tight sm:text-4xl">
+          <h1
+            className={cn(
+              "mt-3 font-display text-4xl font-extrabold leading-[1.05] tracking-[-0.02em] sm:text-5xl",
+              revealClass(visible)
+            )}
+            style={rise(70)}
+          >
             Check any claim before you trust it.
           </h1>
-          <p className="mx-auto mt-3 max-w-xl text-sm leading-relaxed text-surface-foreground/60 sm:text-base">
+          <p
+            className={cn(
+              "mx-auto mt-4 max-w-xl text-sm leading-relaxed text-surface-foreground/60 sm:text-base",
+              revealClass(visible)
+            )}
+            style={rise(140)}
+          >
             Paste an article link for an instant verdict, or drop in the full text
             below — MIDAS scores its credibility with a fine-tuned NLP model and
             cross-checks it against real fact-checks.
           </p>
           <div
-            className="mt-5 flex flex-wrap justify-center gap-2"
+            className={cn(
+              "mt-6 flex flex-wrap justify-center gap-2",
+              revealClass(visible)
+            )}
+            style={rise(210)}
             aria-label="System capabilities"
           >
             {CAPABILITIES.map((c) => (
@@ -130,7 +184,11 @@ export default function HeroVerify(props: HeroVerifyProps) {
           <form
             role="search"
             onSubmit={submitQuick}
-            className="mx-auto mt-7 flex max-w-2xl flex-col gap-2 sm:flex-row sm:items-center"
+            className={cn(
+              "mx-auto mt-8 flex max-w-2xl flex-col gap-2 sm:flex-row sm:items-center",
+              revealClass(visible)
+            )}
+            style={rise(280)}
           >
             <div className="relative flex-1">
               <Link2
@@ -154,7 +212,7 @@ export default function HeroVerify(props: HeroVerifyProps) {
             <Button
               type="submit"
               disabled={loading}
-              className="h-12 w-full rounded-full bg-brand px-7 text-base font-semibold text-brand-foreground hover:bg-brand-hover sm:w-auto"
+              className="h-12 w-full rounded-full bg-brand px-7 text-base font-semibold text-brand-foreground transition-shadow hover:bg-brand-hover hover:shadow-[0_12px_34px_-10px_rgba(249,115,22,0.65)] sm:w-auto"
             >
               {loading ? (
                 <>
@@ -181,7 +239,7 @@ export default function HeroVerify(props: HeroVerifyProps) {
       {/* ── Manual analyse form on the LIGHT page background (unchanged block) ── */}
       <form
         onSubmit={submitForm}
-        className="mt-6 rounded-3xl border border-border bg-card p-6 text-card-foreground shadow-card sm:p-8"
+        className="mt-8 rounded-3xl border border-border bg-card p-6 text-card-foreground shadow-card sm:p-8"
       >
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
           {/* LEFT — the single input */}
@@ -286,7 +344,7 @@ export default function HeroVerify(props: HeroVerifyProps) {
               <Button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-brand text-brand-foreground hover:bg-brand-hover"
+                className="w-full bg-brand text-brand-foreground transition-shadow hover:bg-brand-hover hover:shadow-[0_12px_34px_-10px_rgba(249,115,22,0.55)]"
               >
                 {loading ? (
                   <>
