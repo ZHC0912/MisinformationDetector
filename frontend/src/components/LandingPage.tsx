@@ -95,7 +95,7 @@ const CSS = `
 /* ── Layout helpers ── */
 .mid-wrap { margin: 0 auto; max-width: 1180px; padding-left: 24px; padding-right: 24px; }
 .mid-eyebrow { font-family: var(--mono); font-size: 11px; letter-spacing: .2em; text-transform: uppercase; color: rgba(231,235,239,.5); }
-.mid-h2 { margin: 18px 0 0; font-family: var(--display); font-size: clamp(32px, 5vw, 52px); font-weight: 800; line-height: 1.04; letter-spacing: -.04em; }
+.mid-h2 { margin: 18px 0 0; font-family: var(--display); font-size: clamp(32px, 5vw, 52px); font-weight: 800; line-height: 1.1; letter-spacing: -.04em; }
 .mid-accent { color: var(--accent); }
 
 /* ── Nav (floating pill) ── */
@@ -123,11 +123,11 @@ const CSS = `
 .mid-link-underline:hover { color: var(--accent); }
 
 /* ── Hero ── */
-.mid-hero { position: relative; padding: 190px 24px 90px; }
+.mid-hero { position: relative; padding: 150px 24px 90px; }
 .mid-hero-grid { margin: 0 auto; max-width: 1180px; display: grid; grid-template-columns: 1.15fr .85fr; gap: 56px; align-items: center; }
 .mid-badge { display: inline-flex; align-items: center; gap: 10px; border-radius: 9999px; border: 1px solid var(--line-strong); background: rgba(255,255,255,.05); backdrop-filter: blur(12px); padding: 7px 14px; font-family: var(--mono); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: rgba(231,235,239,.66); }
 .mid-dot { display: block; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: mid-pulse 2.4s ease-in-out infinite; }
-.mid-h1 { margin: 26px 0 0; font-family: var(--display); font-size: clamp(46px, 8.5vw, 88px); font-weight: 800; line-height: .98; letter-spacing: -.045em; max-width: 13ch; text-wrap: pretty; }
+.mid-h1 { margin: 26px 0 0; font-family: var(--display); font-size: clamp(46px, 8.5vw, 88px); font-weight: 800; line-height: 1.06; letter-spacing: -.045em; max-width: 13ch; text-wrap: pretty; }
 .mid-lead { margin: 28px 0 0; max-width: 50ch; font-size: clamp(17px, 2.2vw, 20px); line-height: 1.6; color: rgba(231,235,239,.66); }
 .mid-btn-row { margin-top: 38px; display: flex; flex-wrap: wrap; align-items: center; gap: 16px; }
 .mid-chips { margin-top: 42px; display: flex; flex-wrap: wrap; gap: 8px; }
@@ -140,6 +140,7 @@ const CSS = `
 .mid-ghost-2 { inset: 14px 24px -8px 22px; border-color: rgba(255,255,255,.1); background: rgba(255,255,255,.04); transform: rotate(-3deg); }
 .mid-glass-card { position: relative; border-radius: 28px; border: 1px solid var(--line-strong); background: linear-gradient(160deg,rgba(255,255,255,.13),rgba(255,255,255,.04)); backdrop-filter: blur(26px) saturate(150%); -webkit-backdrop-filter: blur(26px) saturate(150%); padding: 30px; box-shadow: 0 30px 80px rgba(6,7,10,.55); }
 .mid-chip-warn { border-radius: 9999px; border: 1px solid rgba(245,180,63,.45); background: rgba(245,180,63,.14); padding: 5px 12px; font-size: 12px; font-weight: 600; color: var(--warn); }
+.mid-chip-good { border-radius: 9999px; border: 1px solid rgba(52,208,127,.45); background: rgba(52,208,127,.14); padding: 5px 12px; font-size: 12px; font-weight: 600; color: var(--good); }
 .mid-ring-num { font-family: var(--display); font-size: 56px; font-weight: 800; letter-spacing: -.04em; line-height: 1; }
 .mid-model-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; border-radius: 14px; border: 1px solid rgba(255,255,255,.09); background: rgba(255,255,255,.04); padding: 14px 16px; }
 .mid-fine { font-size: 12px; line-height: 1.6; color: rgba(231,235,239,.4); }
@@ -167,7 +168,7 @@ const CSS = `
 .mid-step-p { margin: 10px 0 0; font-size: 14.5px; line-height: 1.65; color: rgba(231,235,239,.58); }
 
 /* What you get — feature cards */
-.mid-what { margin-top: 56px; display: grid; grid-template-columns: 1.3fr 1fr; gap: 22px; }
+.mid-what { margin-top: 56px; display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
 .mid-feature { border-radius: 26px; border: 1px solid rgba(255,255,255,.13); background: linear-gradient(155deg,rgba(255,255,255,.09),rgba(255,255,255,.03)); backdrop-filter: blur(22px); -webkit-backdrop-filter: blur(22px); padding: 32px; box-shadow: 0 24px 60px rgba(6,7,10,.35); }
 .mid-feature-tag { display: flex; align-items: center; gap: 10px; color: rgba(231,235,239,.75); }
 .mid-feature-tag span { font-family: var(--mono); font-size: 10.5px; letter-spacing: .18em; text-transform: uppercase; color: rgba(231,235,239,.55); }
@@ -194,16 +195,22 @@ const CSS = `
 .mid-limits { position: relative; background: var(--bg-deep); border-top: 1px solid rgba(255,255,255,.07); border-bottom: 1px solid rgba(255,255,255,.07); }
 .mid-limits-grid { margin: 0 auto; max-width: 1180px; padding: 110px 24px; display: grid; grid-template-columns: auto 1.6fr; gap: 64px; align-items: start; }
 .mid-limits-h { margin: 0; font-family: var(--display); font-size: clamp(30px, 4.5vw, 40px); font-weight: 800; line-height: 1.12; letter-spacing: -.035em; }
-.mid-limits-p { margin: 20px 0 0; max-width: 62ch; font-size: 17px; line-height: 1.75; color: rgba(231,235,239,.6); }
 .mid-limits-badge { display: flex; align-items: center; gap: 12px; }
 .mid-limits-badge span:first-child { display: flex; height: 40px; width: 40px; align-items: center; justify-content: center; border-radius: 12px; border: 1px solid var(--line-strong); color: var(--ink); }
+.mid-limits-points { margin-top: 40px; display: grid; grid-template-columns: repeat(3,1fr); gap: 28px; }
+.mid-limit-point { border-top: 1px solid var(--line-strong); padding-top: 18px; }
+.mid-limit-point-label { display: flex; align-items: center; gap: 9px; font-family: var(--mono); font-size: 11px; letter-spacing: .16em; text-transform: uppercase; color: rgba(231,235,239,.9); }
+.mid-limit-point-label span { display: block; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
+.mid-limit-point-p { margin: 12px 0 0; font-size: 15.5px; line-height: 1.65; color: rgba(231,235,239,.6); }
 
 /* Final CTA */
-.mid-cta-sec { position: relative; overflow: hidden; padding: 140px 24px 130px; }
+.mid-cta-sec { position: relative; overflow: hidden; padding: clamp(72px, 9vw, 100px) 24px; }
 .mid-cta-glow { position: absolute; left: 50%; top: 10%; width: 120vw; height: 80vh; transform: translateX(-50%); background: radial-gradient(ellipse at 50% 40%,rgba(249,115,22,.24),rgba(249,115,22,.08) 45%,rgba(27,30,36,0) 72%); filter: blur(20px); pointer-events: none; }
-.mid-cta-grid { position: relative; margin: 0 auto; max-width: 1180px; display: grid; grid-template-columns: 1.4fr 1fr; gap: 60px; align-items: end; }
-.mid-cta-h { margin: 0; font-family: var(--display); font-size: clamp(40px, 6.5vw, 66px); font-weight: 800; line-height: 1.02; letter-spacing: -.045em; max-width: 16ch; }
-.mid-attribution { margin: 0; font-family: var(--mono); font-size: 12.5px; line-height: 1.9; color: rgba(231,235,239,.45); }
+/* Closing CTA is centred — the one deliberately-centred band on an otherwise
+   left-aligned page (classic closing call-to-action pattern). */
+.mid-cta-grid { position: relative; margin: 0 auto; max-width: 760px; text-align: center; }
+.mid-cta-h { margin: 0 auto; font-family: var(--display); font-size: clamp(40px, 6.5vw, 66px); font-weight: 800; line-height: 1.08; letter-spacing: -.045em; max-width: 20ch; }
+.mid-attribution { margin: 28px auto 0; max-width: 60ch; font-family: var(--mono); font-size: 12.5px; line-height: 1.9; color: rgba(231,235,239,.45); }
 
 /* Footer */
 .mid-footer { position: relative; border-top: 1px solid rgba(255,255,255,.09); background: rgba(16,18,22,.6); backdrop-filter: blur(20px); }
@@ -219,7 +226,7 @@ const CSS = `
 @keyframes mid-drift2 { 0%,100% { transform: translate3d(0,0,0) scale(1.05); } 40% { transform: translate3d(-11vw,-7vh,0) scale(.88); } 70% { transform: translate3d(7vw,8vh,0) scale(1.2); } }
 @keyframes mid-drift3 { 0%,100% { transform: translate3d(0,0,0) scale(.95); } 50% { transform: translate3d(12vw,-9vh,0) scale(1.25); } }
 @keyframes mid-hue { 0%,100% { filter: hue-rotate(0deg); } 50% { filter: hue-rotate(24deg); } }
-@keyframes mid-sweep { from { stroke-dashoffset: 553; } to { stroke-dashoffset: 232; } }
+@keyframes mid-sweep { from { stroke-dashoffset: 553; } to { stroke-dashoffset: 11; } }
 @keyframes mid-marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
 @keyframes mid-pulse { 0%,100% { opacity: .25; transform: scale(1); } 50% { opacity: 1; transform: scale(1.5); } }
 
@@ -231,7 +238,6 @@ const CSS = `
   .mid-steps { grid-template-columns: repeat(2,1fr); }
   .mid-step:nth-child(2), .mid-step:nth-child(3), .mid-step:nth-child(4) { margin-top: 0; }
   .mid-what { grid-template-columns: 1fr; }
-  .mid-cta-grid { grid-template-columns: 1fr; gap: 32px; align-items: start; }
   .mid-limits-grid { grid-template-columns: 1fr; gap: 28px; }
   .mid-stats-grid { grid-template-columns: repeat(2,1fr); }
   .mid-foot-grid { grid-template-columns: 1fr; gap: 32px; }
@@ -240,6 +246,7 @@ const CSS = `
   .mid-hero { padding-top: 140px; }
   .mid-section-head { grid-template-columns: 1fr; align-items: start; }
   .mid-nav-links { display: none; }
+  .mid-limits-points { grid-template-columns: 1fr; gap: 22px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .mid-atmos, .mid-blob-1, .mid-blob-2, .mid-blob-3, .mid-marquee-track, .mid-dot { animation: none !important; }
@@ -321,9 +328,8 @@ function Nav() {
           <a href="#limits" className="mid-navlink">Limits</a>
         </nav>
         <div className="mid-nav-right">
-          <span className="mid-nav-tag">Final-year project</span>
           <Link to="/app" className="mid-btn mid-btn-pill">
-            Analyse a claim <ArrowRight size={14} />
+            Analyse a claim
           </Link>
         </div>
       </div>
@@ -378,7 +384,10 @@ function Hero({
           </div>
         </div>
 
-        {/* Illustrative mock — not a real assessment */}
+        {/* Pre-recorded REAL /analyse output (run 2026-08-19): a genuine news
+            article → credibility_score 98, style_verdict "Reliable", 98.9%
+            confidence. Score/verdict/ring are the true model numbers; the ring
+            colour follows ResultsPage scoreTone (≥70 → green). Not a live call. */}
         <div className="mid-card-scene" ref={cardRef}>
           <div className="mid-ghost mid-ghost-1" />
           <div className="mid-ghost mid-ghost-2" />
@@ -387,19 +396,24 @@ function Hero({
               <span style={{ fontFamily: "var(--mono)", fontSize: 10.5, letterSpacing: ".16em", textTransform: "uppercase", color: "rgba(231,235,239,.5)" }}>
                 Example output
               </span>
-              <span className="mid-chip-warn">Mixed signals</span>
+              <span className="mid-chip-good">Reliable</span>
             </div>
-            <div style={{ marginTop: 22, display: "flex", justifyContent: "center" }}>
+            <div style={{ marginTop: 22, display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
               <div style={{ position: "relative", width: 212, height: 212 }}>
                 <svg viewBox="0 0 212 212" width="212" height="212" style={{ transform: "rotate(-90deg)" }}>
                   <circle cx="106" cy="106" r="88" fill="none" stroke="rgba(255,255,255,.1)" strokeWidth="14" />
-                  <circle cx="106" cy="106" r="88" fill="none" stroke="#F5B43F" strokeWidth="14" strokeLinecap="round" strokeDasharray="553" strokeDashoffset="232" style={{ animation: "mid-sweep 1.8s cubic-bezier(.16,1,.3,1) .3s both" }} />
+                  <circle cx="106" cy="106" r="88" fill="none" stroke="var(--good)" strokeWidth="14" strokeLinecap="round" strokeDasharray="553" strokeDashoffset="11" style={{ animation: "mid-sweep 1.8s cubic-bezier(.16,1,.3,1) .3s both" }} />
                 </svg>
                 <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-                  <div className="mid-ring-num">58</div>
+                  <div className="mid-ring-num">98</div>
                   <div style={{ fontFamily: "var(--mono)", fontSize: 11, letterSpacing: ".14em", color: "rgba(231,235,239,.45)" }}>/ 100</div>
                 </div>
               </div>
+              {/* Ring label — same eyebrow treatment as "Example output", matching
+                  the CREDIBILITY label under the ScrollDemo / ResultsPage ring. */}
+              <span style={{ fontFamily: "var(--mono)", fontSize: 10.5, letterSpacing: ".16em", textTransform: "uppercase", color: "rgba(231,235,239,.5)" }}>
+                Credibility
+              </span>
             </div>
             <div style={{ marginTop: 24, display: "flex", flexDirection: "column", gap: 14 }}>
               <div className="mid-model-row">
@@ -412,7 +426,7 @@ function Hero({
               </div>
             </div>
             <p className="mid-fine" style={{ marginTop: 18 }}>
-              Illustrative interface sample — not a real assessment.
+              Pre-recorded from an actual analyse run not a live API call.
             </p>
           </div>
         </div>
@@ -501,6 +515,7 @@ function WhatYouGet() {
   const { ref, visible } = useRevealOnScroll<HTMLDivElement>();
   const featureClass = cn("mid-feature", revealClass(visible));
   const delay = (i: number) => ({ transitionDelay: visible ? `${i * 90}ms` : "0ms" });
+  const ringC = 2 * Math.PI * 48; // score-ring circumference (r=48)
 
   return (
     <section id="what" className="mid-section" style={{ paddingBottom: "clamp(90px,14vw,130px)" }}>
@@ -524,9 +539,34 @@ function WhatYouGet() {
                 <span style={{ fontFamily: "var(--mono)", fontSize: 10.5, letterSpacing: ".16em", textTransform: "uppercase", color: "rgba(231,235,239,.45)" }}>Example</span>
                 <span style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--warn)" }}>mixed signals</span>
               </div>
-              <div className="mid-bar" style={{ marginTop: 16 }}><i style={{ width: "58%", background: "var(--warn)" }} /></div>
-              <div style={{ marginTop: 12, display: "flex", justifyContent: "space-between", fontSize: 12.5, color: "rgba(231,235,239,.45)" }}>
-                <span>Style signal</span><span>Fact-check signal</span>
+              {/* Score ring + Reliable/Misleading probability bars — mirrors the
+                  real ResultsPage ScoreRing (tone by value: amber at 58) + ConfBar. */}
+              <div style={{ marginTop: 16, display: "flex", alignItems: "center", gap: 18 }}>
+                <svg width="76" height="76" viewBox="0 0 114 114" style={{ flexShrink: 0 }} aria-hidden="true">
+                  <circle cx="57" cy="57" r="48" fill="none" stroke="#fff" strokeOpacity="0.14" strokeWidth="9" />
+                  <circle
+                    cx="57" cy="57" r="48" fill="none"
+                    stroke="var(--warn)" strokeWidth="9" strokeLinecap="round"
+                    strokeDasharray={ringC} strokeDashoffset={ringC * (1 - 0.58)}
+                    transform="rotate(-90 57 57)"
+                  />
+                  <text x="57" y="55" textAnchor="middle" fill="#fff" fontSize="30" fontWeight="700" style={{ fontFamily: "var(--display)" }}>58</text>
+                  <text x="57" y="74" textAnchor="middle" fill="rgba(255,255,255,.6)" fontSize="13">/100</text>
+                </svg>
+                <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 12 }}>
+                  <div>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: "rgba(231,235,239,.6)" }}>
+                      <span>Reliable</span><span>58%</span>
+                    </div>
+                    <div className="mid-bar mid-bar-sm" style={{ marginTop: 6 }}><i style={{ width: "58%", background: "var(--good)" }} /></div>
+                  </div>
+                  <div>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: "rgba(231,235,239,.6)" }}>
+                      <span>Misleading</span><span>42%</span>
+                    </div>
+                    <div className="mid-bar mid-bar-sm" style={{ marginTop: 6 }}><i style={{ width: "42%", background: "var(--bad)" }} /></div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -539,17 +579,25 @@ function WhatYouGet() {
               See which sections of a long article pull the score down, instead of
               judging the whole piece at once.
             </p>
+            {/* Mirrors the real ResultsPage paragraph strip: ¶ N + a bar whose
+                WIDTH is the misleading probability, coloured green (<50%) or red
+                (≥50%) — the same two-tone threshold, no amber — plus % misleading. */}
             <div style={{ marginTop: 28, display: "flex", flexDirection: "column", gap: 14 }}>
               {[
-                { n: "01", w: "74%", c: "var(--good)" },
-                { n: "02", w: "41%", c: "var(--warn)" },
-                { n: "03", w: "22%", c: "var(--bad)" },
-              ].map((r) => (
-                <div key={r.n} style={{ display: "grid", gridTemplateColumns: "20px 1fr", gap: 12, alignItems: "center" }}>
-                  <span style={{ fontFamily: "var(--mono)", fontSize: 11, color: "rgba(231,235,239,.4)" }}>{r.n}</span>
-                  <div className="mid-bar"><i style={{ width: r.w, background: r.c }} /></div>
-                </div>
-              ))}
+                { n: "¶ 1", mis: 16 },
+                { n: "¶ 2", mis: 48 },
+                { n: "¶ 3", mis: 84 },
+              ].map((r) => {
+                const bad = r.mis >= 50;
+                const c = bad ? "var(--bad)" : "var(--good)";
+                return (
+                  <div key={r.n} style={{ display: "grid", gridTemplateColumns: "26px 1fr auto", gap: 12, alignItems: "center" }}>
+                    <span style={{ fontFamily: "var(--mono)", fontSize: 11, color: "rgba(231,235,239,.4)" }}>{r.n}</span>
+                    <div className="mid-bar"><i style={{ width: `${r.mis}%`, background: c }} /></div>
+                    <span style={{ fontFamily: "var(--mono)", fontSize: 11, color: c }}>{r.mis}% misleading</span>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
@@ -578,11 +626,14 @@ function WhatYouGet() {
               Factual-reporting tiers, MBFC-style, for the outlets MIDAS holds
               ratings for.
             </p>
+            {/* Mirrors the real SourceRatingRow: a single UNIFORM orange
+                (brand) meter per source, where tier is encoded by the bar's
+                LENGTH (tier/5), not by colour. */}
             <div style={{ marginTop: 28, display: "flex", flexDirection: "column", gap: 13 }}>
               {[
-                { label: "Very high", tier: "tier 5", w: "100%", c: "var(--good)" },
-                { label: "Mostly factual", tier: "tier 3", w: "60%", c: "var(--warn)" },
-                { label: "Low", tier: "tier 1", w: "20%", c: "var(--bad)" },
+                { label: "Very high", tier: "tier 5", w: "100%", c: "var(--accent)" },
+                { label: "Mostly factual", tier: "tier 3", w: "60%", c: "var(--accent)" },
+                { label: "Low", tier: "tier 1", w: "20%", c: "var(--accent)" },
               ].map((r) => (
                 <div key={r.label}>
                   <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13.5, color: "rgba(231,235,239,.75)" }}>
@@ -654,8 +705,8 @@ function SdgStrip() {
         <div ref={ref} className={cn("mid-sdg", revealClass(visible, false))}>
           <span className="mid-sdg-ic"><Scale size={20} /></span>
           <p style={{ margin: 0, fontSize: 14.5, lineHeight: 1.6, color: "rgba(231,235,239,.6)" }}>
-            <span style={{ color: "var(--ink)", fontWeight: 600 }}>Aligned with UN SDG 16</span>{" "}
-            (peace, justice and strong institutions) — promoting public access to
+            <span style={{ color: "var(--ink)", fontWeight: 600 }}>Aligned with SDG 16 (peace, justice and strong institutions)</span>{" "}
+             — promoting public access to
             reliable information.
           </p>
         </div>
@@ -673,15 +724,34 @@ function Limits() {
           <span><Scale size={19} /></span>
           <span className="mid-eyebrow" style={{ color: "rgba(231,235,239,.45)" }}>Where it stops</span>
         </div>
-        <div style={{ maxWidth: "62ch" }}>
-          <h2 className="mid-limits-h">MIDAS is indicative, not authoritative.</h2>
-          <p className="mid-limits-p">
-            The score is a model's reading of writing style plus a search of
-            existing fact-checks. It can be wrong, and it is not a substitute for
-            professional fact-checking or your own judgement. Treat a low score as
-            a reason to look closer, not as a verdict, and always verify important
-            claims with independent sources.
-          </p>
+        <div>
+          <h2 className="mid-limits-h" style={{ maxWidth: "20ch" }}>MIDAS is indicative, not authoritative.</h2>
+          {/* Same disclosure, broken into three labelled points across the full
+              width so the section reads as deliberate. Wording unchanged — each
+              point carries the original sentences verbatim. */}
+          <div className="mid-limits-points">
+            <div className="mid-limit-point">
+              <div className="mid-limit-point-label"><span aria-hidden="true" />Style, not facts</div>
+              <p className="mid-limit-point-p">
+                The score is a model's reading of writing style plus a search of
+                existing fact-checks.
+              </p>
+            </div>
+            <div className="mid-limit-point">
+              <div className="mid-limit-point-label"><span aria-hidden="true" />It can be wrong</div>
+              <p className="mid-limit-point-p">
+                It can be wrong, and it is not a substitute for professional
+                fact-checking or your own judgement.
+              </p>
+            </div>
+            <div className="mid-limit-point">
+              <div className="mid-limit-point-label"><span aria-hidden="true" />Verify important claims</div>
+              <p className="mid-limit-point-p">
+                Treat a low score as a reason to look closer, not as a verdict, and
+                always verify important claims with independent sources.
+              </p>
+            </div>
+          </div>
         </div>
       </div>
     </section>
@@ -695,14 +765,11 @@ function FinalCta() {
     <section id="cta" className="mid-cta-sec">
       <div className="mid-cta-glow" aria-hidden="true" />
       <div ref={ref} className={cn("mid-cta-grid", revealClass(visible))}>
-        <div>
-          <h2 className="mid-cta-h">Paste something in. See what it finds.</h2>
-          <div style={{ marginTop: 36, display: "flex", flexWrap: "wrap", alignItems: "center", gap: 18 }}>
-            <Link to="/app" className="mid-btn" style={{ height: 56, padding: "0 30px", fontSize: 17 }}>
-              Analyse a claim <ArrowRight size={17} />
-            </Link>
-            <a href="#what" className="mid-link-underline">See what a result looks like</a>
-          </div>
+        <h2 className="mid-cta-h">Paste something in. See what it finds.</h2>
+        <div style={{ marginTop: 28 }}>
+          <Link to="/app" className="mid-btn" style={{ height: 56, padding: "0 30px", fontSize: 17 }}>
+            Analyse a claim <ArrowRight size={17} />
+          </Link>
         </div>
         <p className="mid-attribution">
           MIDAS — Misinformation Detection &amp; Analysis System. A final-year
@@ -742,7 +809,6 @@ function Footer() {
             <div className="mid-foot-head">Data sources</div>
             <ul className="mid-foot-list" style={{ color: "rgba(231,235,239,.65)" }}>
               <li>Google Fact Check Tools</li>
-              <li>Media Bias/Fact Check tiers</li>
               <li>DistilBERT · ISOT + LIAR</li>
             </ul>
           </div>

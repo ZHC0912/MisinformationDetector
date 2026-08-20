@@ -7,19 +7,27 @@
 // when scrolling up. No animation library — plain React state +
 // CSS transitions.
 //
-// IMPORTANT: this is ILLUSTRATIVE, not a live analysis. The
-// sentence and score are hardcoded (the score simply eases 100→62
-// with scroll); it does NOT call the backend. It is labelled as a
-// sample, matching the hero mock's honesty line.
+// IMPORTANT: the score, verdict and detected patterns shown below are the
+// REAL recorded output of the /analyse endpoint for this exact sentence
+// (run 2026-08-19 against the deployed stage-2 model: credibility_score
+// 0, style_verdict "Misleading", 99.8% confidence, 5 warning
+// key_features). They are hard-coded here as a PRE-RECORDED sample —
+// this component does NOT call the backend at runtime. Only the reveal
+// (word highlighting, the score count-down) is animation.
+//
+// The result card mirrors the real ResultsPage.tsx treatment for this
+// result: RED verdict (destructive), the same value-reflecting score ring
+// (empty at 0), and the six detected patterns as destructive chips.
 // ============================================================
 
 import { useEffect, useRef, useState, type RefObject } from "react";
+import { TriangleAlert, X } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 
 const clamp = (n: number, min = 0, max = 1) => Math.min(max, Math.max(min, n));
 
 // Palette (matches the landing's dark theme).
 const INK = "#E7EBEF";
-const WARN = "#F5B43F";
 const BAD_BG = "rgba(229,72,77,.18)";
 const BAD_BORDER = "rgba(229,72,77,.42)";
 const BAD_INK = "#FF9DA0";
@@ -78,16 +86,97 @@ const SEGMENTS: { t: string; warn?: number }[] = [
   { t: "BREAKING", warn: 0 },
   { t: ": Leaked documents expose the " },
   { t: "shocking", warn: 1 },
-  { t: " truth they're hiding — " },
-  { t: "you won't believe", warn: 2 },
-  { t: " it. " },
-  { t: "Share before it's deleted", warn: 3 },
+  { t: " truth they're hiding. " },
+  { t: "Share before it's deleted", warn: 2 },
   { t: "!" },
 ];
 
-// Scroll fraction at which each highlighted span switches on (staggered).
-const THRESHOLDS = [0.18, 0.36, 0.54, 0.72];
+// Scroll fraction at which each highlighted span switches on — evenly
+// staggered across the three warn segments (BREAKING, shocking, Share…).
+const THRESHOLDS = [0.2, 0.4, 0.6];
 const VERDICT_AT = 0.6; // result card starts fading in here
+
+// Real recorded /analyse output for the sentence above (run 2026-08-19).
+// credibility_score 0 · style_verdict "Misleading" · 99.8% confidence ·
+// 5 warning key_features. TRUE_PATTERNS is the actual `key_features` list
+// (same order the API returned it); the ResultsPage renders each as a
+// destructive chip, so we do too.
+const TRUE_SCORE = 0;
+const TRUE_VERDICT = "Misleading";
+const TRUE_CONFIDENCE = 0.9979; // response `confidence` (formatted like the sidebar)
+const TRUE_PATTERNS = [
+  "shocking",
+  "breaking",
+  "leaked",
+  "deleted",
+  "before it's deleted",
+];
+
+// Same tone mapping ResultsPage uses (scoreTone / ScoreRing): ≥70 green,
+// ≥40 amber, else red. At the real score (0) the arc is red-toned but
+// zero-length, so the ring reads as an empty faint track.
+const ringTone = (s: number) =>
+  s >= 70 ? "text-success" : s >= 40 ? "text-warning" : "text-destructive";
+
+// Score ring copied from ResultsPage.tsx ScoreRing (onDark variant): faint
+// white track + tone-coloured arc whose length reflects the value.
+function DemoScoreRing({ score }: { score: number }) {
+  const r = 48;
+  const c = 2 * Math.PI * r;
+  return (
+    <div
+      className="flex shrink-0 flex-col items-center gap-1"
+      role="img"
+      aria-label={`Credibility score ${score} out of 100`}
+    >
+      <svg className={ringTone(score)} width="96" height="96" viewBox="0 0 114 114">
+        <circle
+          className="text-white"
+          cx="57"
+          cy="57"
+          r={r}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="9"
+          opacity={0.18}
+        />
+        <circle
+          cx="57"
+          cy="57"
+          r={r}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="9"
+          strokeDasharray={c}
+          strokeDashoffset={c - (score / 100) * c}
+          strokeLinecap="round"
+          transform="rotate(-90 57 57)"
+        />
+        <text
+          x="57"
+          y="54"
+          textAnchor="middle"
+          className="fill-white"
+          fontSize="26"
+          fontWeight="700"
+        >
+          {score}
+        </text>
+        <text x="57" y="72" textAnchor="middle" className="fill-white/60" fontSize="12">
+          /100
+        </text>
+      </svg>
+      {/* Ring label — matches the "VERDICT"/"CONFIDENCE" eyebrow treatment
+          (ResultsPage labels its score ring "Credibility" the same way). */}
+      <div
+        className="text-xs font-medium uppercase tracking-wide"
+        style={{ color: "rgba(231,235,239,.5)" }}
+      >
+        Credibility
+      </div>
+    </div>
+  );
+}
 
 export default function ScrollDemo() {
   const sectionRef = useRef<HTMLElement>(null);
@@ -98,10 +187,10 @@ export default function ScrollDemo() {
   // Otherwise the reveal is driven by scroll position through the section.
   const progress = reduced ? 1 : scrolled;
 
-  // Credibility score eases from 100 → 62 across the scroll range.
-  const score = Math.round(100 - clamp((progress - 0.15) / 0.6) * 38);
+  // Score counts down from 100 to the REAL recorded score (0) across the
+  // scroll range, so the animation lands on the true model number.
+  const score = Math.round(100 - clamp((progress - 0.15) / 0.6) * (100 - TRUE_SCORE));
   const verdictOn = progress >= VERDICT_AT;
-  const flaggedCount = THRESHOLDS.filter((t) => progress >= t).length;
 
   return (
     <section
@@ -130,14 +219,14 @@ export default function ScrollDemo() {
                 color: "rgba(231,235,239,.5)",
               }}
             >
-              Live demonstration
+              Recorded model output
             </span>
             <p className="mt-2 text-sm" style={{ color: "rgba(231,235,239,.6)" }}>
-              Scroll to watch the model flag the language patterns it was trained
-              to catch.
+              A real model output for this sample sentence — the score and verdict
+              are what the analyser actually returned, revealed as you scroll.
             </p>
             <p className="mt-1 text-xs" style={{ color: "rgba(231,235,239,.4)" }}>
-              Illustrative sample — not a real assessment.
+              Pre-recorded from an actual analyse run — not a live API call.
             </p>
           </div>
 
@@ -179,9 +268,11 @@ export default function ScrollDemo() {
               })}
             </p>
 
-            {/* Result card — fades/slides in as the verdict forms */}
+            {/* Result card — fades/slides in as the verdict forms.
+                Mirrors ResultsPage.tsx: value-reflecting score ring, RED
+                (destructive) verdict, and the detected patterns as chips. */}
             <div
-              className="mt-6 flex items-center gap-4 pt-6 transition-all duration-500 motion-reduce:transition-none"
+              className="mt-6 flex flex-col gap-4 pt-6 transition-all duration-500 motion-reduce:transition-none"
               style={{
                 borderTop: "1px solid rgba(255,255,255,.1)",
                 transform: verdictOn ? "translateY(0)" : "translateY(8px)",
@@ -190,30 +281,55 @@ export default function ScrollDemo() {
               }}
               aria-hidden={!verdictOn}
             >
-              <div
-                className="flex h-16 w-16 shrink-0 flex-col items-center justify-center rounded-full"
-                style={{ border: `2px solid ${WARN}`, color: WARN }}
-              >
-                <span className="text-lg font-bold leading-none tabular-nums">
-                  {score}
-                </span>
-                <span className="text-[10px]" style={{ color: "rgba(231,235,239,.5)" }}>
-                  /100
-                </span>
+              {/* Score ring keeps its natural width; VERDICT and CONFIDENCE
+                  split the remaining row width evenly (each flex-1). */}
+              <div className="flex items-center gap-6">
+                <DemoScoreRing score={score} />
+                <div className="flex-1">
+                  <div
+                    className="text-xs font-medium uppercase tracking-wide"
+                    style={{ color: "rgba(231,235,239,.5)" }}
+                  >
+                    Verdict
+                  </div>
+                  {/* Same verdict mapping as ResultsPage VERDICT_META:
+                      Misleading → destructive (red) + X icon. */}
+                  <div className="mt-0.5 flex items-center gap-1.5 text-destructive">
+                    <X className="h-5 w-5" strokeWidth={2.5} />
+                    <span className="text-lg font-bold">{TRUE_VERDICT}</span>
+                  </div>
+                </div>
+                {/* Model confidence — the one real number not shown elsewhere on
+                    the card. Eyebrow label above the figure, matching VERDICT. */}
+                <div className="flex-1">
+                  <div
+                    className="text-xs font-medium uppercase tracking-wide"
+                    style={{ color: "rgba(231,235,239,.5)" }}
+                  >
+                    Confidence
+                  </div>
+                  <div className="mt-0.5">
+                    <span className="text-lg font-bold tabular-nums" style={{ color: INK }}>
+                      {(TRUE_CONFIDENCE * 100).toFixed(1)}%
+                    </span>
+                  </div>
+                </div>
               </div>
+              {/* Detected patterns — the real key_features, as destructive
+                  chips (ResultsPage renders these identically). */}
               <div>
                 <div
-                  className="text-xs font-medium uppercase tracking-wide"
+                  className="mb-1.5 text-xs font-medium"
                   style={{ color: "rgba(231,235,239,.5)" }}
                 >
-                  Verdict
+                  Detected patterns
                 </div>
-                <div className="text-lg font-bold" style={{ color: WARN }}>
-                  Potentially Misleading
-                </div>
-                <div className="text-xs" style={{ color: "rgba(231,235,239,.55)" }}>
-                  {flaggedCount} manipulation pattern
-                  {flaggedCount === 1 ? "" : "s"} detected
+                <div className="flex flex-wrap gap-1.5">
+                  {TRUE_PATTERNS.map((w, i) => (
+                    <Badge key={i} variant="destructive">
+                      <TriangleAlert /> {w}
+                    </Badge>
+                  ))}
                 </div>
               </div>
             </div>
