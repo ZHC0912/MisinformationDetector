@@ -1,9 +1,10 @@
 // ============================================================
-// SOURCES PAGE  (route: /sources) — left-aligned master-detail.
+// SOURCES PAGE  (route: /sources) — master-detail source reliability index.
 // LEFT: searchable + sortable list of every seeded source (GET /api/sources).
 // RIGHT: details for the selected source. Real, owned data only — no invented
-// outlets or fields. Reuses the shared SourceRatingRow bar treatment and MIDAS
-// styling; inherits the global Navbar + Footer from the router Layout.
+// outlets or fields. Reuses the shared SourceRatingRow bar treatment plus the
+// MIDAS navy header band + reveal/card recipe used on /evaluation and /app;
+// inherits the global Navbar + Footer from the router Layout.
 // ============================================================
 
 import { useEffect, useMemo, useState } from "react";
@@ -20,8 +21,14 @@ import type { SourceRatingItem } from "@/lib/types";
 import { getSources, ApiError } from "@/lib/api";
 import SourceRatingRow, { tierWidth } from "@/components/SourceRatingRow";
 import { cn } from "@/lib/utils";
+import { useRevealOnScroll, revealClass } from "@/hooks/useRevealOnScroll";
 
 type SortKey = "tier" | "name";
+
+// Fine-grain noise texture — same treatment as the /app hero, results band and
+// /evaluation header. Data-URI, no asset dependency.
+const GRAIN =
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E";
 
 // Dedupe by outlet name (the data has two BBC domains → keep the first, which is
 // the highest-tier occurrence since the API returns rows tier-sorted).
@@ -34,6 +41,59 @@ function dedupeByName(sources: SourceRatingItem[]): SourceRatingItem[] {
     out.push(s);
   }
   return out;
+}
+
+// ── Reveal-on-scroll card (presentation only) ─────────────────
+// Matched radius + soft shadow + reveal-on-scroll (shared hook); optional hover
+// lift, exactly as EvaluationPage / ResultsPage RevealCard. Static under
+// prefers-reduced-motion.
+function RevealCard({
+  index = 0,
+  hover = false,
+  className,
+  children,
+}: {
+  index?: number;
+  hover?: boolean;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  const { ref, visible } = useRevealOnScroll<HTMLDivElement>();
+  return (
+    <div
+      ref={ref}
+      style={{ transitionDelay: visible ? `${Math.min(index, 7) * 60}ms` : "0ms" }}
+      className={cn(
+        "rounded-3xl border border-border bg-card shadow-card",
+        hover &&
+          "transition-all hover:-translate-y-0.5 hover:shadow-card-hover motion-reduce:transition-none",
+        revealClass(visible),
+        className
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
+// ── Reveal-on-scroll list row (per-row stagger) ───────────────
+function RevealRow({
+  index,
+  children,
+}: {
+  index: number;
+  children: React.ReactNode;
+}) {
+  const { ref, visible } = useRevealOnScroll<HTMLLIElement>();
+  return (
+    <li
+      ref={ref}
+      style={{ transitionDelay: visible ? `${Math.min(index, 10) * 40}ms` : "0ms" }}
+      className={revealClass(visible)}
+    >
+      {children}
+    </li>
+  );
 }
 
 function DetailField({ label, value }: { label: string; value: string }) {
@@ -106,16 +166,38 @@ export default function SourcesPage() {
   const loading = sources === null && !error;
 
   return (
-    <>
-      <main className="w-full px-6 py-8 sm:px-8 sm:py-10">
-        {/* Top-left header */}
-
-        <header className="mt-4 flex items-start justify-between gap-4">
-          <div className="max-w-2xl">
-            <h1 className="font-display text-2xl font-extrabold tracking-tight text-foreground sm:text-3xl">
+    <main className="w-full space-y-6 px-6 py-8 sm:px-8 sm:py-10">
+      {/* MIDAS header band — dark navy with the same glow + grain recipe as the
+          /app hero and the /evaluation header. Title, description and the
+          Back-to-analyse action live here; everything below stays light. */}
+      <section className="relative overflow-hidden rounded-3xl bg-surface px-6 py-8 text-surface-foreground shadow-card sm:px-10 sm:py-9">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0"
+          style={{
+            background:
+              "radial-gradient(120% 120% at 12% -10%, rgba(249,115,22,0.18), rgba(249,115,22,0) 55%), radial-gradient(90% 90% at 108% 120%, rgba(249,115,22,0.10), rgba(249,115,22,0) 60%)",
+          }}
+        />
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0"
+          style={{
+            opacity: 0.1,
+            mixBlendMode: "overlay",
+            backgroundSize: "180px 180px",
+            backgroundImage: `url("${GRAIN}")`,
+          }}
+        />
+        <div className="relative z-10 flex flex-wrap items-start justify-between gap-4">
+          <div className="max-w-3xl">
+            <span className="text-xs font-bold uppercase tracking-[0.2em] text-brand">
+              Source reliability
+            </span>
+            <h1 className="mt-2 font-display text-2xl font-extrabold leading-tight tracking-tight sm:text-3xl">
               Source reliability index
             </h1>
-            <p className="mt-1 text-sm text-muted-foreground">
+            <p className="mt-3 text-sm leading-relaxed text-surface-foreground/70">
               Factual-reporting tiers for every seeded outlet, based on Media
               Bias/Fact Check-style levels. Ratings self-update from the system's
               own accumulated verdict history per source.
@@ -123,169 +205,181 @@ export default function SourcesPage() {
           </div>
           <Link
             to="/app"
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-white/20 bg-white/5 px-3 py-2 text-sm font-medium text-surface-foreground transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
           >
             <ArrowLeft className="h-4 w-4" /> Back to analyse
           </Link>
-        </header>
+        </div>
+      </section>
 
-        {error ? (
-          <div className="mt-8 flex items-center gap-2 rounded-2xl border border-border bg-card p-6 text-sm text-muted-foreground shadow-card">
-            <TriangleAlert className="h-4 w-4 text-warning" />
-            {error}
-          </div>
-        ) : loading ? (
-          <div className="mt-8 flex items-center gap-2 rounded-2xl border border-border bg-card p-6 text-sm text-muted-foreground shadow-card">
-            <Loader2 className="h-4 w-4 animate-spin" /> Loading sources…
-          </div>
-        ) : (
-          <div className="mt-8 flex flex-col gap-6 lg:flex-row lg:items-start">
-            {/* LEFT PANE — searchable / sortable list */}
-            <div className="w-full lg:w-[380px] lg:shrink-0">
-              <div className="rounded-2xl border border-border bg-card p-3 shadow-card">
-                {/* Search */}
-                <div className="relative">
-                  <Search
-                    className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
-                    aria-hidden="true"
-                  />
-                  <input
-                    type="search"
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    placeholder="Filter by outlet or domain…"
-                    aria-label="Filter sources by outlet name or domain"
-                    className="h-10 w-full rounded-lg border border-input bg-background pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
-                  />
-                </div>
-
-                {/* Sort toggle */}
-                <div className="mt-2 flex items-center gap-2 px-1">
-                  <span className="text-xs font-medium text-muted-foreground">
-                    Sort
-                  </span>
-                  <div className="flex rounded-lg border border-border p-0.5">
-                    <SortButton
-                      active={sortBy === "tier"}
-                      onClick={() => setSortBy("tier")}
-                    >
-                      Tier
-                    </SortButton>
-                    <SortButton
-                      active={sortBy === "name"}
-                      onClick={() => setSortBy("name")}
-                    >
-                      Name
-                    </SortButton>
-                  </div>
-                  <span className="ml-auto text-xs text-muted-foreground/70">
-                    {visible.length}
-                  </span>
-                </div>
-
-                {/* List */}
-                {visible.length === 0 ? (
-                  <p className="px-2 py-6 text-center text-sm text-muted-foreground">
-                    No outlets match “{query}”.
-                  </p>
-                ) : (
-                  <ul className="mt-2 space-y-1 lg:max-h-[calc(100vh-340px)] lg:overflow-y-auto">
-                    {visible.map((s) => {
-                      const isSelected = s.domain === selected;
-                      return (
-                        <li key={s.domain}>
-                          <button
-                            type="button"
-                            onClick={() => setSelected(s.domain)}
-                            aria-current={isSelected ? "true" : undefined}
-                            className={cn(
-                              "w-full rounded-xl px-3 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand",
-                              isSelected
-                                ? "bg-secondary ring-1 ring-brand/40"
-                                : "hover:bg-secondary/60"
-                            )}
-                          >
-                            <SourceRatingRow source={s} variant="light" />
-                          </button>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
+      {error ? (
+        <div className="flex items-center gap-2 rounded-3xl border border-border bg-card p-6 text-sm text-muted-foreground shadow-card">
+          <TriangleAlert className="h-4 w-4 text-warning" />
+          {error}
+        </div>
+      ) : loading ? (
+        <div className="flex items-center gap-2 rounded-3xl border border-border bg-card p-6 text-sm text-muted-foreground shadow-card">
+          <Loader2 className="h-4 w-4 animate-spin" /> Loading sources…
+        </div>
+      ) : (
+        <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
+          {/* LEFT PANE — searchable / sortable list. Flows with the page (no
+              nested scrollbar); the detail pane sticks alongside it. */}
+          <div className="w-full lg:w-[380px] lg:shrink-0">
+            <RevealCard className="p-3">
+              {/* Search */}
+              <div className="relative">
+                <Search
+                  className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+                  aria-hidden="true"
+                />
+                <input
+                  type="search"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Filter by outlet or domain…"
+                  aria-label="Filter sources by outlet name or domain"
+                  className="h-10 w-full rounded-lg border border-input bg-background pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
+                />
               </div>
-            </div>
 
-            {/* RIGHT PANE — detail */}
-            <div className="w-full lg:flex-1">
-              {selectedItem ? (
-                <div className="rounded-2xl border border-border bg-card p-6 shadow-card sm:p-8">
-                  <div className="flex flex-wrap items-start justify-between gap-4">
-                    <div className="min-w-0">
-                      <h2 className="font-display text-2xl font-extrabold tracking-tight text-foreground">
-                        {selectedItem.name}
-                      </h2>
-                      <div className="mt-1 flex items-center gap-1.5 text-sm text-muted-foreground">
-                        <Globe className="h-4 w-4" />
-                        <span className="truncate">{selectedItem.domain}</span>
+              {/* Sort toggle */}
+              <div className="mt-2 flex items-center gap-2 px-1">
+                <span className="text-xs font-medium text-muted-foreground">
+                  Sort
+                </span>
+                <div className="flex rounded-lg border border-border p-0.5">
+                  <SortButton
+                    active={sortBy === "tier"}
+                    onClick={() => setSortBy("tier")}
+                  >
+                    Tier
+                  </SortButton>
+                  <SortButton
+                    active={sortBy === "name"}
+                    onClick={() => setSortBy("name")}
+                  >
+                    Name
+                  </SortButton>
+                </div>
+                <span className="ml-auto text-xs text-muted-foreground/70">
+                  {visible.length}
+                </span>
+              </div>
+
+              {/* List */}
+              {visible.length === 0 ? (
+                <p className="px-2 py-6 text-center text-sm text-muted-foreground">
+                  No outlets match “{query}”.
+                </p>
+              ) : (
+                <ul className="mt-2 space-y-1">
+                  {visible.map((s, i) => {
+                    const isSelected = s.domain === selected;
+                    return (
+                      <RevealRow key={s.domain} index={i}>
+                        <button
+                          type="button"
+                          onClick={() => setSelected(s.domain)}
+                          aria-current={isSelected ? "true" : undefined}
+                          className={cn(
+                            "w-full rounded-xl px-3 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand",
+                            isSelected
+                              ? "bg-secondary ring-1 ring-brand/40"
+                              : "hover:bg-secondary/60"
+                          )}
+                        >
+                          <SourceRatingRow source={s} variant="light" />
+                        </button>
+                      </RevealRow>
+                    );
+                  })}
+                </ul>
+              )}
+            </RevealCard>
+          </div>
+
+          {/* RIGHT PANE — detail. Sticky + content-height so it stays aligned
+              with the list while scanning and never leaves a void below itself. */}
+          <div className="w-full lg:sticky lg:top-6 lg:flex-1 lg:self-start">
+            {selectedItem ? (
+              <RevealCard hover className="p-6 sm:p-8">
+                {/* Outlet name + domain — the domain appears ONCE, here. */}
+                <h2 className="font-display text-3xl font-extrabold tracking-tight text-foreground">
+                  {selectedItem.name}
+                </h2>
+                <div className="mt-1.5 flex items-center gap-1.5 text-sm text-muted-foreground">
+                  <Globe className="h-4 w-4" />
+                  <span className="truncate">{selectedItem.domain}</span>
+                </div>
+
+                {/* Reliability tier — carries the most weight: the factual-
+                    reporting rating shown ONCE (as the emphasised label), the
+                    tier number, and the meter. */}
+                <div className="mt-6 rounded-2xl border border-border bg-muted/30 p-5">
+                  <div className="flex items-end justify-between gap-4">
+                    <div>
+                      <div className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                        Factual reporting
+                      </div>
+                      <div className="mt-1.5 font-display text-2xl font-extrabold tracking-tight text-foreground sm:text-3xl">
+                        {selectedItem.rating || "—"}
                       </div>
                     </div>
-                    <span className="shrink-0 rounded-full bg-secondary px-3 py-1 text-sm font-semibold text-foreground">
-                      {selectedItem.rating}
-                    </span>
-                  </div>
-
-                  {/* Reliability bar */}
-                  <div className="mt-6 max-w-md">
-                    <div className="flex items-center justify-between text-xs font-medium text-muted-foreground">
-                      <span>Reliability tier</span>
-                      <span>
-                        {selectedItem.tier_index === null
-                          ? "—"
-                          : `${selectedItem.tier_index} / 5`}
-                      </span>
-                    </div>
-                    <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-secondary">
-                      <div
-                        className="h-full rounded-full bg-brand"
-                        style={{ width: tierWidth(selectedItem.tier_index) }}
-                      />
+                    <div className="shrink-0 text-right">
+                      <div className="text-xs font-medium text-muted-foreground">
+                        Tier
+                      </div>
+                      <div className="mt-1 font-bold tabular-nums text-foreground">
+                        <span className="text-2xl">
+                          {selectedItem.tier_index === null
+                            ? "—"
+                            : selectedItem.tier_index}
+                        </span>
+                        <span className="text-muted-foreground"> / 5</span>
+                      </div>
                     </div>
                   </div>
-
-                  {/* Fields (only real /api/sources fields) */}
-                  <dl className="mt-8 grid grid-cols-1 gap-x-8 gap-y-6 sm:grid-cols-2">
-                    <DetailField label="Factual reporting" value={selectedItem.rating} />
-                    <DetailField label="Bias / lean" value={selectedItem.bias} />
-                    <DetailField label="Category" value={selectedItem.category} />
-                    <DetailField label="Domain" value={selectedItem.domain} />
-                  </dl>
-
-                  {/* Website link */}
-                  <a
-                    href={`https://${selectedItem.domain}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-8 inline-flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-brand-foreground transition-colors hover:bg-brand-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-                  >
-                    Visit {selectedItem.domain}
-                    <ArrowUpRight className="h-4 w-4" />
-                  </a>
-
-                  <p className="mt-6 border-t border-border pt-4 text-xs text-muted-foreground">
-                    Seeded from Media Bias/Fact Check tiers; ratings self-update
-                    from this system's own verdict history per source.
-                  </p>
+                  <div className="mt-4 h-2.5 w-full overflow-hidden rounded-full bg-secondary">
+                    <div
+                      className="h-full rounded-full bg-brand"
+                      style={{ width: tierWidth(selectedItem.tier_index) }}
+                    />
+                  </div>
                 </div>
-              ) : (
-                <div className="rounded-2xl border border-border bg-card p-10 text-center text-sm text-muted-foreground shadow-card">
-                  Select a source to view its details.
-                </div>
-              )}
-            </div>
+
+                {/* Remaining metadata — tight two-up (rating + domain live above,
+                    so they're not repeated here). */}
+                <dl className="mt-6 grid grid-cols-2 gap-x-8 gap-y-5">
+                  <DetailField label="Bias / lean" value={selectedItem.bias} />
+                  <DetailField label="Category" value={selectedItem.category} />
+                </dl>
+
+                {/* Website link — label drops the domain (shown once above). */}
+                <a
+                  href={`https://${selectedItem.domain}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-7 inline-flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-brand-foreground transition-colors hover:bg-brand-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+                >
+                  Visit website
+                  <ArrowUpRight className="h-4 w-4" />
+                </a>
+
+                <p className="mt-6 border-t border-border pt-4 text-xs text-muted-foreground">
+                  Seeded from Media Bias/Fact Check tiers; ratings self-update
+                  from this system's own verdict history per source.
+                </p>
+              </RevealCard>
+            ) : (
+              <RevealCard className="p-10 text-center text-sm text-muted-foreground">
+                Select a source to view its details.
+              </RevealCard>
+            )}
           </div>
-        )}
-      </main>
-    </>
+        </div>
+      )}
+    </main>
   );
 }
 
