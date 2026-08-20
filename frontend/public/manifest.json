@@ -1,6 +1,6 @@
 {
-  "short_name": "MisinfoDetector",
-  "name": "Misinformation Detector",
+  "short_name": "MIDAS",
+  "name": "MIDAS — Misinformation Detection & Analysis",
   "icons": [
     {
       "src": "favicon.svg",
@@ -20,6 +20,6 @@
   ],
   "start_url": ".",
   "display": "standalone",
-  "theme_color": "#243769",
+  "theme_color": "#F97316",
   "background_color": "#ffffff"
 }
