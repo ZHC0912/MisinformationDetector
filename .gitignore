@@ -1,6 +1,5 @@
 # ── Model weights (too large for GitHub) ──────────────────────
 backend/model/model.safetensors
-backend/model_liar/model.safetensors
 backend/model_v2/model.safetensors
 backend/model_versions/
 notebooks/training_output/
@@ -45,5 +44,4 @@ FYP Semester 2/
 
 # ── Working scratch / junk ────────────────────────────────────
 .claude/
-/restriction.png
 CLAUDE.md
