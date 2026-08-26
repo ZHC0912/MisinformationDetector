@@ -24,6 +24,7 @@ import {
   TriangleAlert,
   Check,
   Loader2,
+  Info,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -60,11 +61,13 @@ export interface HeroVerifyProps {
   onOpenOcr: () => void;
 }
 
+// Plain-English label for non-technical users, with the technical name kept
+// beside it (and in the tooltip) so it stays defensible for the report / viva.
 const CAPABILITIES = [
-  "DistilBERT NLP",
-  "Hybrid fact-check",
-  "Image OCR",
-  "URL import",
+  { label: "AI text analysis", tech: "DistilBERT NLP" },
+  { label: "Fact-check lookup", tech: "Hybrid fact-check" },
+  { label: "Reads text from images", tech: "Image OCR" },
+  { label: "Import from a link", tech: "URL import" },
 ];
 
 export default function HeroVerify(props: HeroVerifyProps) {
@@ -172,10 +175,14 @@ export default function HeroVerify(props: HeroVerifyProps) {
           >
             {CAPABILITIES.map((c) => (
               <span
-                key={c}
-                className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs font-medium text-surface-foreground/70"
+                key={c.tech}
+                title={c.tech}
+                className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs font-medium text-surface-foreground/70"
               >
-                {c}
+                {c.label}
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-surface-foreground/45">
+                  {c.tech}
+                </span>
               </span>
             ))}
           </div>
@@ -241,9 +248,10 @@ export default function HeroVerify(props: HeroVerifyProps) {
         onSubmit={submitForm}
         className="mt-8 rounded-3xl border border-border bg-card p-6 text-card-foreground shadow-card sm:p-8"
       >
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
-          {/* LEFT — the single input */}
-          <div>
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+          {/* LEFT — the single input. Flex column so the textarea can grow to
+              fill the cell height and end level with the right rail. */}
+          <div className="flex h-full flex-col">
             <div className="space-y-1.5">
               <Label htmlFor="source-input">
                 Source name{" "}
@@ -251,23 +259,51 @@ export default function HeroVerify(props: HeroVerifyProps) {
               </Label>
               <Input
                 id="source-input"
+                className="bg-muted/50 focus-visible:border-brand focus-visible:ring-2 focus-visible:ring-brand"
                 placeholder="e.g. BBC News, @politician, Ministry of Health"
                 value={sourceName}
                 onChange={(e) => setSourceName(e.target.value)}
               />
             </div>
 
-            <div className="mt-4 space-y-1.5">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="text-input">Headline or article text</Label>
-                {wordCount > 0 && (
-                  <span className="text-xs text-muted-foreground">{wordCount} words</span>
-                )}
+            <div className="mt-4 flex flex-1 flex-col space-y-1.5">
+              {/* Label + the two import buttons share this row — the imports fill
+                  the textarea, so they belong next to it. Buttons are compact and
+                  right-aligned; on narrow screens they wrap below the label. */}
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="text-input">Headline or article text</Label>
+                  {wordCount > 0 && (
+                    <span className="text-xs text-muted-foreground">{wordCount} words</span>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {/* Identical treatment to the primary "Check credibility" submit
+                      (default variant, solid brand fill, text-brand-foreground, same
+                      hover bg + glow shadow, same radius/icon handling) — only
+                      smaller (size="sm") and auto-width, since it stays secondary. */}
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={onOpenUrl}
+                    className="bg-brand text-brand-foreground transition-shadow hover:bg-brand-hover hover:shadow-[0_12px_34px_-10px_rgba(249,115,22,0.55)]"
+                  >
+                    <Link2 /> Fetch from URL
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={onOpenOcr}
+                    className="bg-brand text-brand-foreground transition-shadow hover:bg-brand-hover hover:shadow-[0_12px_34px_-10px_rgba(249,115,22,0.55)]"
+                  >
+                    <ImageIcon /> Extract from image
+                  </Button>
+                </div>
               </div>
               <Textarea
                 id="text-input"
-                className="min-h-44 lg:min-h-56"
-                placeholder="Paste a short headline, a single claim, or a full article — MIDAS handles any length. You can also import the text from a URL or an image using the tools on the right."
+                className="min-h-44 bg-muted/50 focus-visible:border-brand focus-visible:ring-2 focus-visible:ring-brand lg:min-h-56 lg:flex-1"
+                placeholder="Paste a short headline, a single claim, or a full article — MIDAS handles any length. You can also import the text from a URL or an image using the buttons above the box."
                 value={text}
                 onChange={(e) => setText(e.target.value)}
               />
@@ -287,30 +323,39 @@ export default function HeroVerify(props: HeroVerifyProps) {
             )}
           </div>
 
-          {/* RIGHT — rail: imports, explainability, one submit */}
-          <div className="flex flex-col gap-5 lg:border-l lg:border-border lg:pl-6">
-            <div className="space-y-2">
-              <div className="text-sm font-medium">Import text</div>
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full justify-start"
-                onClick={onOpenUrl}
-              >
-                <Link2 /> Fetch from URL
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full justify-start"
-                onClick={onOpenOcr}
-              >
-                <ImageIcon /> Extract from image
-              </Button>
-            </div>
-
+          {/* RIGHT — rail: imports, explainability, one submit.
+              Faint neutral tint + border separates it from the text-entry column. */}
+          <div className="flex flex-col gap-5 rounded-2xl border border-border bg-muted/40 p-5">
             <div className="space-y-3">
-              <div className="text-sm font-medium">Explainability</div>
+              {/* orange accent marker — same treatment as the /evaluation metric cards */}
+              <div className="h-1 w-8 rounded-full bg-brand/80" />
+              <div className="flex items-center gap-1.5 text-sm font-medium">
+                <span>
+                  Explainability{" "}
+                  <span className="font-normal text-muted-foreground">(optional)</span>
+                </span>
+                {/* Info icon → tooltip on hover AND keyboard focus (group-focus-within).
+                    aria-describedby keeps the text available to screen readers even
+                    while visually hidden. No new dependency — lucide Info + CSS. */}
+                <span className="group relative inline-flex">
+                  <button
+                    type="button"
+                    aria-label="About the explainability options"
+                    aria-describedby="explainability-tip"
+                    className="inline-flex h-4 w-4 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+                  >
+                    <Info className="h-4 w-4" />
+                  </button>
+                  <span
+                    role="tooltip"
+                    id="explainability-tip"
+                    className="pointer-events-none absolute left-0 top-6 z-20 w-64 rounded-lg border border-border bg-card p-3 text-xs font-normal leading-relaxed text-muted-foreground opacity-0 shadow-card transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
+                  >
+                    Both add a word-by-word breakdown of how the verdict was reached, and
+                    make the analysis slower. Leave them off for the fastest result.
+                  </span>
+                </span>
+              </div>
               <label className="flex cursor-pointer items-start gap-3">
                 <Checkbox
                   className="mt-0.5"
@@ -318,9 +363,14 @@ export default function HeroVerify(props: HeroVerifyProps) {
                   onCheckedChange={(v) => setRunShap(v === true)}
                 />
                 <span className="flex flex-col">
-                  <span className="text-sm font-medium">Word influence — SHAP</span>
+                  <span className="flex items-center gap-2 text-sm font-medium">
+                    Detailed word-by-word breakdown
+                    <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      SHAP
+                    </span>
+                  </span>
                   <span className="text-xs text-muted-foreground">
-                    Scores how much each word affected the verdict · slower, ~10–45s
+                    The most thorough view of which words affected the result · slower, ~10–45s
                   </span>
                 </span>
               </label>
@@ -331,9 +381,14 @@ export default function HeroVerify(props: HeroVerifyProps) {
                   onCheckedChange={(v) => setRunLime(v === true)}
                 />
                 <span className="flex flex-col">
-                  <span className="text-sm font-medium">Word influence — LIME</span>
+                  <span className="flex items-center gap-2 text-sm font-medium">
+                    Quick word highlights
+                    <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      LIME
+                    </span>
+                  </span>
                   <span className="text-xs text-muted-foreground">
-                    Highlights which words drove the verdict · adds ~5–10s
+                    A faster, lighter view of the key words · adds ~5–10s · pick this if you&rsquo;re unsure
                   </span>
                 </span>
               </label>
@@ -352,7 +407,7 @@ export default function HeroVerify(props: HeroVerifyProps) {
                   </>
                 ) : (
                   <>
-                    <Search /> Analyse credibility
+                    <Search /> Check credibility
                   </>
                 )}
               </Button>
