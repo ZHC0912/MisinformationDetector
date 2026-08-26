@@ -10,6 +10,7 @@
 
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Layout from "@/components/Layout";
+import ScrollToTop from "@/components/ScrollToTop";
 import LandingPage from "@/components/LandingPage";
 import AnalysePage from "@/components/AnalysePage";
 import EvaluationPage from "@/components/EvaluationPage";
@@ -18,6 +19,8 @@ import SourcesPage from "@/components/SourcesPage";
 export default function App() {
   return (
     <BrowserRouter>
+      {/* Resets scroll to top on every route change (all routes). */}
+      <ScrollToTop />
       <Routes>
         {/* Landing: standalone, no shared Layout (its own dark navbar/footer). */}
         <Route path="/" element={<LandingPage />} />
