@@ -12,12 +12,19 @@ import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { ShieldCheck, Search, BarChart3, ScanSearch } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useSearchLock } from "@/components/SearchLockContext";
 
 export default function Navbar() {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const onApp = location.pathname.startsWith("/app");
+
+  // A routed page (the /app results view) can disable the feed search so a
+  // search can't navigate away and discard an in-progress analysis. `reason`
+  // is the tooltip / SR explanation; null means enabled.
+  const { reason: searchLock } = useSearchLock();
+  const searchDisabled = searchLock !== null;
 
   // Keep the field in sync with the active feed query when on /app.
   const [q, setQ] = useState("");
@@ -27,6 +34,7 @@ export default function Navbar() {
 
   const submitSearch = (e: React.FormEvent) => {
     e.preventDefault();
+    if (searchDisabled) return; // locked by the current page (e.g. results view)
     const topic = q.trim();
     // Drives the feed only — never runs the analysis model.
     navigate(topic ? `/app?q=${encodeURIComponent(topic)}` : "/app");
@@ -56,21 +64,36 @@ export default function Navbar() {
           className="relative mx-auto flex w-full min-w-0 max-w-xl items-center"
         >
           <Search
-            className="pointer-events-none absolute left-3.5 h-4 w-4 text-surface-foreground/50"
+            className={cn(
+              "pointer-events-none absolute left-3.5 h-4 w-4 text-surface-foreground/50",
+              searchDisabled && "opacity-50"
+            )}
             aria-hidden="true"
           />
           <input
             type="search"
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Search fact-checks by topic…"
+            // readOnly (not `disabled`) so it stays focusable and screen readers
+            // still reach it; aria-disabled + the described reason announce WHY.
+            readOnly={searchDisabled}
+            aria-disabled={searchDisabled || undefined}
+            aria-describedby={searchDisabled ? "nav-search-lock" : undefined}
+            title={searchDisabled ? searchLock ?? undefined : undefined}
+            placeholder={searchDisabled ? "Search paused" : "Search fact-checks by topic…"}
             aria-label="Search recently fact-checked claims"
             className={cn(
               "h-10 w-full rounded-full border border-surface-muted bg-surface-subtle pl-10 pr-4 text-sm",
               "text-surface-foreground placeholder:text-surface-foreground/45",
-              "focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
+              "focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand",
+              searchDisabled && "cursor-not-allowed opacity-50"
             )}
           />
+          {searchDisabled && (
+            <span id="nav-search-lock" className="sr-only">
+              {searchLock}
+            </span>
+          )}
         </form>
 
         {/* Nav links */}

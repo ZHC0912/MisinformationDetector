@@ -13,8 +13,8 @@
 // ============================================================
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
-import { Loader2, TriangleAlert, Newspaper } from "lucide-react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { TriangleAlert, Newspaper, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import ResultsPage from "@/components/ResultsPage";
 import ErrorBoundary from "@/components/ErrorBoundary";
@@ -24,6 +24,7 @@ import OcrModal, { type OcrSuccess } from "@/components/OcrModal";
 import HeroVerify from "@/components/HeroVerify";
 import FactCheckCard from "@/components/FactCheckCard";
 import ReliabilityCard from "@/components/ReliabilityCard";
+import { useSearchLock } from "@/components/SearchLockContext";
 import { analyse, scrapeUrl, getFactChecks, ApiError } from "@/lib/api";
 import type { AnalyseResult, FactCheckItem } from "@/lib/types";
 
@@ -48,12 +49,14 @@ export default function AnalysePage() {
   // search overrides the region and searches the whole corpus. Only the ACTIVE
   // section is fetched; a client cache means switching back never re-fetches.
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const feedQuery = (searchParams.get("q") ?? "").trim();
   const searching = feedQuery.length > 0;
   const [region, setRegion] = useState<"malaysia" | "foreign">("malaysia");
   const [feedItems, setFeedItems] = useState<FactCheckItem[] | null>(null);
   const [feedError, setFeedError] = useState("");
   const feedCache = useRef<Record<string, FactCheckItem[]>>({});
+  const feedRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     const key = searching ? `q:${feedQuery.toLowerCase()}` : `r:${region}`;
@@ -80,6 +83,34 @@ export default function AnalysePage() {
       cancelled = true;
     };
   }, [searching, feedQuery, region]);
+
+  // On a search, smooth-scroll to the feed so the user sees the page move and
+  // lands on the results (they load below the fold). Runs whenever the query
+  // changes. Respects prefers-reduced-motion by jumping instead of animating.
+  useEffect(() => {
+    if (!searching || !feedRef.current) return;
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    feedRef.current.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
+  }, [searching, feedQuery]);
+
+  // Clear the navbar search: drop ?q= and return to the region tabs.
+  const clearSearch = () => navigate("/app");
+
+  // Lock the GLOBAL navbar feed-search while a full-page view owns /app: the
+  // results view (a search would navigate away and silently discard the user's
+  // analysis) and, for consistency, while an analysis is loading. Cleanup on
+  // unmount re-enables it, so /sources and /evaluation are never affected.
+  const { setReason: setSearchLock } = useSearchLock();
+  useEffect(() => {
+    if (showResults) {
+      setSearchLock("Finish or clear this analysis to search fact-checks.");
+    } else if (loading) {
+      setSearchLock("Analysis in progress — search resumes when it finishes.");
+    } else {
+      setSearchLock(null);
+    }
+    return () => setSearchLock(null);
+  }, [showResults, loading, setSearchLock]);
 
   const handleUrlSuccess = ({ text: t, siteName, wordCount, label }: UrlSuccess) => {
     setText(t);
@@ -263,7 +294,7 @@ export default function AnalysePage() {
 
         <div className="mt-14 grid gap-8 sm:mt-16 lg:grid-cols-[1fr_320px]">
           {/* Fact-check feed */}
-          <section aria-labelledby="feed-heading">
+          <section ref={feedRef} aria-labelledby="feed-heading" className="scroll-mt-24">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <h2
@@ -277,10 +308,31 @@ export default function AnalysePage() {
                     ? `Results for “${feedQuery}”`
                     : "Attributed claims by public figures"}
                 </p>
-                <p className="mt-1 max-w-xl text-sm text-muted-foreground">
-                  Fact-checked statements attributed to a named speaker, drawn
-                  from Google&rsquo;s ClaimReview corpus.
-                </p>
+                {searching ? (
+                  // Result context: what was searched + how many came back, plus
+                  // an inline way to clear the search and return to the tabs.
+                  <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
+                    <span aria-live="polite">
+                      {feedItems === null
+                        ? `Searching for “${feedQuery}”…`
+                        : `${feedItems.length} ${
+                            feedItems.length === 1 ? "result" : "results"
+                          } for “${feedQuery}”`}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={clearSearch}
+                      className="inline-flex items-center gap-1 font-semibold text-brand underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+                    >
+                      <X className="h-3.5 w-3.5" /> Clear search
+                    </button>
+                  </p>
+                ) : (
+                  <p className="mt-1 max-w-xl text-sm text-muted-foreground">
+                    Fact-checked statements attributed to a named speaker, drawn
+                    from Google&rsquo;s ClaimReview corpus.
+                  </p>
+                )}
               </div>
 
               {/* Right side of the header band: region tabs above the attribution */}
@@ -323,8 +375,28 @@ export default function AnalysePage() {
                   {feedError}
                 </div>
               ) : feedItems === null ? (
-                <div className="flex items-center gap-2 rounded-2xl border border-border bg-card p-6 text-sm text-muted-foreground shadow-card">
-                  <Loader2 className="h-4 w-4 animate-spin" /> Loading fact-checks…
+                // Loading: skeleton cards in the same 2-col grid so the layout
+                // doesn't jump when results arrive. Status text for screen readers.
+                <div>
+                  <p className="sr-only" role="status" aria-live="polite">
+                    {searching ? `Searching for ${feedQuery}` : "Loading fact-checks"}
+                  </p>
+                  <div className="grid gap-4 sm:grid-cols-2" aria-hidden="true">
+                    {Array.from({ length: 4 }).map((_, i) => (
+                      <div
+                        key={i}
+                        className="animate-pulse rounded-2xl border border-border bg-card p-5 shadow-card"
+                      >
+                        <div className="h-3 w-24 rounded bg-muted" />
+                        <div className="mt-3 h-4 w-full rounded bg-muted" />
+                        <div className="mt-2 h-4 w-4/5 rounded bg-muted" />
+                        <div className="mt-5 flex items-center gap-2">
+                          <div className="h-6 w-16 rounded-full bg-muted" />
+                          <div className="h-3 w-20 rounded bg-muted" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ) : feedItems.length === 0 ? (
                 <div className="flex flex-col items-center gap-2 rounded-2xl border border-border bg-card p-10 text-center text-sm text-muted-foreground shadow-card">
