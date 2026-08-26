@@ -84,16 +84,18 @@ function usePrefersReducedMotion() {
 // manipulation-language match; its number is the index into THRESHOLDS.
 const SEGMENTS: { t: string; warn?: number }[] = [
   { t: "BREAKING", warn: 0 },
-  { t: ": Leaked documents expose the " },
-  { t: "shocking", warn: 1 },
+  { t: ": " },
+  { t: "Leaked", warn: 1 },
+  { t: " documents expose the " },
+  { t: "shocking", warn: 2 },
   { t: " truth they're hiding. " },
-  { t: "Share before it's deleted", warn: 2 },
+  { t: "Share before it's deleted", warn: 3 },
   { t: "!" },
 ];
 
 // Scroll fraction at which each highlighted span switches on — evenly
-// staggered across the three warn segments (BREAKING, shocking, Share…).
-const THRESHOLDS = [0.2, 0.4, 0.6];
+// staggered across the four warn segments (BREAKING, Leaked, shocking, Share…).
+const THRESHOLDS = [0.2, 0.33, 0.47, 0.6];
 const VERDICT_AT = 0.6; // result card starts fading in here
 
 // Real recorded /analyse output for the sentence above (run 2026-08-19).
@@ -129,7 +131,7 @@ function DemoScoreRing({ score }: { score: number }) {
       role="img"
       aria-label={`Credibility score ${score} out of 100`}
     >
-      <svg className={ringTone(score)} width="96" height="96" viewBox="0 0 114 114">
+      <svg className={ringTone(score)} width="140" height="140" viewBox="0 0 114 114">
         <circle
           className="text-white"
           cx="57"
@@ -208,7 +210,7 @@ export default function ScrollDemo() {
     >
       {/* Sticky stage: stays centred while the tall section scrolls past it */}
       <div className="sticky top-0 flex min-h-screen flex-col items-center justify-center px-4">
-        <div className="mx-auto w-full max-w-2xl">
+        <div className="mx-auto w-full max-w-3xl">
           <div className="mb-6 text-center">
             <span
               style={{
@@ -281,55 +283,64 @@ export default function ScrollDemo() {
               }}
               aria-hidden={!verdictOn}
             >
-              {/* Score ring keeps its natural width; VERDICT and CONFIDENCE
-                  split the remaining row width evenly (each flex-1). */}
-              <div className="flex items-center gap-6">
+              {/* Ring on the LEFT; a single right-hand column (flex-col) that
+                  stretches to the ring's height (sm:items-stretch). VERDICT/
+                  CONFIDENCE sit at the TOP (with padding above); Detected patterns
+                  is pushed to the column's BOTTOM edge via mt-auto, so the
+                  top/bottom split fills the height. Stacks under the ring on
+                  narrow screens. */}
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-stretch sm:gap-10">
                 <DemoScoreRing score={score} />
-                <div className="flex-1">
-                  <div
-                    className="text-xs font-medium uppercase tracking-wide"
-                    style={{ color: "rgba(231,235,239,.5)" }}
-                  >
-                    Verdict
+                <div className="flex flex-1 flex-col pt-2">
+                  <div className="flex gap-6 pt-6">
+                    <div className="flex-1">
+                      <div
+                        className="text-xs font-medium uppercase tracking-wide"
+                        style={{ color: "rgba(231,235,239,.5)" }}
+                      >
+                        Verdict
+                      </div>
+                      {/* Same verdict mapping as ResultsPage VERDICT_META:
+                          Misleading → destructive (red) + X icon. */}
+                      <div className="mt-0.5 flex items-center gap-1.5 text-destructive">
+                        <X className="h-5 w-5" strokeWidth={2.5} />
+                        <span className="text-lg font-bold">{TRUE_VERDICT}</span>
+                      </div>
+                    </div>
+                    {/* Model confidence — the one real number not shown elsewhere
+                        on the card. Eyebrow label above the figure, matching VERDICT. */}
+                    <div className="flex-1">
+                      <div
+                        className="text-xs font-medium uppercase tracking-wide"
+                        style={{ color: "rgba(231,235,239,.5)" }}
+                      >
+                        Confidence
+                      </div>
+                      <div className="mt-0.5">
+                        <span className="text-lg font-bold tabular-nums" style={{ color: INK }}>
+                          {(TRUE_CONFIDENCE * 100).toFixed(1)}%
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                  {/* Same verdict mapping as ResultsPage VERDICT_META:
-                      Misleading → destructive (red) + X icon. */}
-                  <div className="mt-0.5 flex items-center gap-1.5 text-destructive">
-                    <X className="h-5 w-5" strokeWidth={2.5} />
-                    <span className="text-lg font-bold">{TRUE_VERDICT}</span>
+                  {/* Detected patterns — pushed to the bottom of the right column
+                      (mt-auto). Real key_features as destructive chips (ResultsPage
+                      renders these identically). */}
+                  <div className="mt-auto pt-4">
+                    <div
+                      className="mb-1.5 text-xs font-medium"
+                      style={{ color: "rgba(231,235,239,.5)" }}
+                    >
+                      Detected patterns
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {TRUE_PATTERNS.map((w, i) => (
+                        <Badge key={i} variant="destructive">
+                          <TriangleAlert /> {w}
+                        </Badge>
+                      ))}
+                    </div>
                   </div>
-                </div>
-                {/* Model confidence — the one real number not shown elsewhere on
-                    the card. Eyebrow label above the figure, matching VERDICT. */}
-                <div className="flex-1">
-                  <div
-                    className="text-xs font-medium uppercase tracking-wide"
-                    style={{ color: "rgba(231,235,239,.5)" }}
-                  >
-                    Confidence
-                  </div>
-                  <div className="mt-0.5">
-                    <span className="text-lg font-bold tabular-nums" style={{ color: INK }}>
-                      {(TRUE_CONFIDENCE * 100).toFixed(1)}%
-                    </span>
-                  </div>
-                </div>
-              </div>
-              {/* Detected patterns — the real key_features, as destructive
-                  chips (ResultsPage renders these identically). */}
-              <div>
-                <div
-                  className="mb-1.5 text-xs font-medium"
-                  style={{ color: "rgba(231,235,239,.5)" }}
-                >
-                  Detected patterns
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {TRUE_PATTERNS.map((w, i) => (
-                    <Badge key={i} variant="destructive">
-                      <TriangleAlert /> {w}
-                    </Badge>
-                  ))}
                 </div>
               </div>
             </div>
